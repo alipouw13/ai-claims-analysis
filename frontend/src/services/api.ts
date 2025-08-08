@@ -10,6 +10,7 @@ export interface DocumentUploadRequest {
   document_type?: string;
   company_name?: string;
   filing_date?: string;
+  is_claim?: boolean;
 }
 
 export interface DocumentUploadResponse {
@@ -115,6 +116,10 @@ class ApiService {
     if (request.filing_date) {
       formData.append('filing_date', request.filing_date);
     }
+    // Optional hint for claims uploads
+    if ((request as any).is_claim) {
+      formData.append('is_claim', 'true');
+    }
 
     const response = await fetch(`${API_BASE_URL}/documents/upload`, {
       method: 'POST',
@@ -135,6 +140,7 @@ class ApiService {
     status?: string;
     limit?: number;
     offset?: number;
+    index?: 'policy' | 'claims';
   }): Promise<{ documents: DocumentInfo[] }> {
     const searchParams = new URLSearchParams();
     
@@ -143,6 +149,7 @@ class ApiService {
     if (params?.status) searchParams.append('status', params.status);
     if (params?.limit) searchParams.append('limit', params.limit.toString());
     if (params?.offset) searchParams.append('offset', params.offset.toString());
+    if (params?.index) searchParams.append('index', params.index);
 
     const queryString = searchParams.toString();
     const endpoint = queryString ? `/knowledge-base/documents?${queryString}` : '/knowledge-base/documents';

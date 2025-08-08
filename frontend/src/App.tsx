@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MessageSquare, BarChart3, HelpCircle, FileText } from 'lucide-react';
+import { MessageSquare, BarChart3, HelpCircle, FileText, Building2 } from 'lucide-react';
 import { ChatContainer } from '@/components/chat/ChatContainer';
 import { AdminDashboard } from '@/components/admin/AdminDashboard';
 import KnowledgeBaseManager from '@/components/knowledge-base/KnowledgeBaseManager';
 import { QAContainer } from '@/components/qa/QAContainer';
-import SECDocumentsManager from '@/components/sec-documents/SECDocumentsManager';
 import { ModelConfiguration, ModelSettings } from '@/components/shared/ModelConfiguration';
 import { CitigroupLogo } from '@/components/shared/CitigroupLogo';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
@@ -17,7 +16,7 @@ import AskClaims from '@/components/customer/AskClaims';
 type Role = 'admin' | 'underwriter' | 'customer';
 
 const AppContent = () => {
-  const [activeTab, setActiveTab] = useState('sec-docs');
+  const [activeTab, setActiveTab] = useState('documents');
   const [role, setRole] = useState<Role>('admin');
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [globalModelSettings, setGlobalModelSettings] = useState<ModelSettings>({
@@ -35,7 +34,7 @@ const AppContent = () => {
   };
 
   const visibleTabs = (
-    role === 'customer' ? ['claims', 'submit', 'ask'] : ['chat', 'qa', 'sec-docs', 'admin']
+    role === 'customer' ? ['claims', 'submit', 'ask'] : ['chat', 'qa', 'documents', 'admin']
   );
 
   return (
@@ -46,34 +45,39 @@ const AppContent = () => {
     }`}>
       <div className="border-b bg-background">
         <div className="flex h-16 items-center px-4">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <MessageSquare className="h-6 w-6" />
-              {theme === 'customer' ? (
-                <CitigroupLogo size="md" />
-              ) : (
-                <h1 className="text-xl font-semibold">RAG Financial Assistant</h1>
-              )}
+          {/* Left: Brand and product name */}
+          <div className="flex items-center gap-2">
+            <CitigroupLogo size="md" />
+            <span className="ml-2 text-xs rounded bg-secondary px-2 py-0.5">
+              {role.charAt(0).toUpperCase() + role.slice(1)} Access
+            </span>
+          </div>
+
+          {/* Center nav removed per request */}
+
+          {/* Right: Persona segmented control */}
+          <div className="ml-auto flex items-center gap-2">
+            <div className="inline-flex rounded-md border p-0.5 bg-background">
+              {(['admin','underwriter','customer'] as Role[]).map(r => (
+                <button
+                  key={r}
+                  className={`px-3 py-1 text-xs rounded-sm ${role===r ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted'}`}
+                  onClick={() => {
+                    setRole(r);
+                    setTheme(r==='customer' ? 'customer' : 'light');
+                    setActiveTab(r==='customer' ? 'claims' : 'documents');
+                  }}
+                >
+                  {r.charAt(0).toUpperCase()+r.slice(1)}
+                </button>
+              ))}
             </div>
           </div>
-          
-          <div className="ml-auto flex items-center space-x-4">
-            <select
-              className="border rounded px-2 py-1 text-sm"
-              value={role}
-              onChange={(e) => {
-                const r = e.target.value as Role;
-                setRole(r);
-                setTheme(r === 'customer' ? 'customer' : theme);
-                setActiveTab(r === 'customer' ? 'claims' : 'chat');
-              }}
-            >
-              <option value="admin">Admin</option>
-              <option value="underwriter">Underwriter</option>
-              <option value="customer">Customer</option>
-            </select>
+        </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-[1000px]">
+        {/* Below header: main nav tabs similar to previous layout for desktop */}
+        <div className="flex items-center px-4 pb-2">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-5">
                 {visibleTabs.includes('chat') && (
                   <TabsTrigger value="chat" className="flex items-center gap-2">
@@ -87,10 +91,10 @@ const AppContent = () => {
                     Q&A
                   </TabsTrigger>
                 )}
-                {visibleTabs.includes('sec-docs') && (
-                  <TabsTrigger value="sec-docs" className="flex items-center gap-2">
+                {visibleTabs.includes('documents') && (
+                  <TabsTrigger value="documents" className="flex items-center gap-2">
                     <FileText className="h-4 w-4" />
-                    SEC Docs
+                    Documents
                   </TabsTrigger>
                 )}
                 {visibleTabs.includes('admin') && (
@@ -119,7 +123,6 @@ const AppContent = () => {
                 )}
               </TabsList>
             </Tabs>
-          </div>
         </div>
       </div>
 
@@ -145,13 +148,11 @@ const AppContent = () => {
             <QAContainer modelSettings={globalModelSettings} />
           </TabsContent>
           
-          <TabsContent value="sec-docs" className="m-0 bg-background">
-            <SECDocumentsManager />
-          </TabsContent>
-          
-          <TabsContent value="knowledge-base" className="m-0 bg-background">
+          <TabsContent value="documents" className="m-0 bg-background">
             <KnowledgeBaseManager modelSettings={globalModelSettings} />
           </TabsContent>
+          
+          
           
           <TabsContent value="admin" className="m-0 bg-background">
             <AdminDashboard isActive={activeTab === 'admin'} />

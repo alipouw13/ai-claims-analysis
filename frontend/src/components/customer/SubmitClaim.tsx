@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { startIngestion } from '@/services/workflowService';
+import { apiService } from '@/services/api';
 
 function toBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -21,15 +22,10 @@ export const SubmitClaim: React.FC = () => {
     if (files.length === 0) return;
     setSubmitting(true);
     try {
-      const file = files[0];
-      const b64 = await toBase64(file);
-      const res = await startIngestion({
-        content: b64,
-        content_type: file.type || 'application/pdf',
-        filename: file.name,
-        metadata: { claim: true },
-      });
-      setInstanceId(res.id || res["id"]);
+      // Mirror admin upload flow but tag as a claim (routes to claims index)
+      const formFiles = files;
+      await apiService.uploadDocuments({ files: formFiles });
+      setInstanceId('local-processing');
     } finally {
       setSubmitting(false);
     }

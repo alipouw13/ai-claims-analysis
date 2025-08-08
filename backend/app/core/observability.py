@@ -320,11 +320,12 @@ class ObservabilityManager:
         
     def track_kb_update(self, source: str, documents_added: int, documents_updated: int):
         """Track knowledge base updates"""
-        if not self.telemetry_enabled or not self.kb_update_counter:
-            return
-            
-        self.kb_update_counter.add(documents_added, {"source": source, "type": "added"})
-        self.kb_update_counter.add(documents_updated, {"source": source, "type": "updated"})
+        if self.telemetry_enabled and self.kb_update_counter:
+            try:
+                self.kb_update_counter.add(documents_added, {"source": source, "type": "added"})
+                self.kb_update_counter.add(documents_updated, {"source": source, "type": "updated"})
+            except Exception:
+                pass
         
     def track_document_processing_start(self, source: str, content_type: str):
         """Track the start of document processing"""
@@ -338,7 +339,11 @@ class ObservabilityManager:
         
     def track_document_processing_error(self, source: str, error_message: str):
         """Track document processing errors"""
-        self.error_counter.add(1, {"source": source, "type": "document_processing"})
+        try:
+            if self.error_counter:
+                self.error_counter.add(1, {"source": source, "type": "document_processing"})
+        except Exception:
+            pass
         self.metrics_storage["errors"].append({
             "timestamp": datetime.utcnow(),
             "error_type": "document_processing",
@@ -349,7 +354,11 @@ class ObservabilityManager:
         
     def track_document_processing_complete(self, source: str, chunks_created: int, processing_time: float):
         """Track successful completion of document processing"""
-        self.kb_update_counter.add(chunks_created, {"source": source, "type": "chunks_created"})
+        try:
+            if self.kb_update_counter:
+                self.kb_update_counter.add(chunks_created, {"source": source, "type": "chunks_created"})
+        except Exception:
+            pass
         self.metrics_storage["requests"].append({
             "timestamp": datetime.utcnow(),
             "endpoint": "document_processing",
@@ -752,7 +761,11 @@ class ObservabilityManager:
     
     def record_error(self, error_type: str, error_message: str, context: Dict[str, Any] = None):
         """Record error with enhanced context for Azure AI Foundry tracing"""
-        self.error_counter.add(1, {"error_type": error_type})
+        try:
+            if self.error_counter:
+                self.error_counter.add(1, {"error_type": error_type})
+        except Exception:
+            pass
         
         error_data = {
             "timestamp": datetime.utcnow(),

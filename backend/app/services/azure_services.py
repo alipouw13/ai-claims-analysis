@@ -239,6 +239,9 @@ class AzureServiceManager:
                 index_name=settings.AZURE_SEARCH_INDEX_NAME,
                 credential=search_credential
             )
+            # Store endpoint/credential to create scoped clients for other indexes
+            self._search_endpoint = search_endpoint
+            self._search_credential = search_credential
             
             self.search_index_client = SearchIndexClient(
                 endpoint=search_endpoint,
@@ -553,31 +556,51 @@ class AzureServiceManager:
                 fields="content_vector"
             )
             
-            # Use async search client directly - no need for run_in_executor
-            search_start = time.time()
-            results = await self.search_client.search(
-                search_text=query,
-                vector_queries=[vector_query],
-                select=["id", "content", "title", "document_id", "source", "chunk_id", 
-                       "document_type", "company", "filing_date", "section_type", 
-                       "page_number", "credibility_score", "processed_at", "citation_info",
-                       "ticker", "cik", "form_type", "accession_number", "industry", 
-                       "document_url", "sic", "entity_type", "period_end_date", 
-                       "chunk_index", "content_type", "chunk_method", "file_size"],
-                filter=filters,
-                top=top_k,
-                query_type="semantic",                semantic_configuration_name="default-semantic-config"
-            )
-            search_time = time.time() - search_start
-            
-            # Filter results by minimum score if specified - use async iteration
-            filtered_results = []
-            async for result in results:
-                result_dict = dict(result)
-                score = getattr(result, '@search.score', 0.0)
-                if score >= min_score:
-                    result_dict['search_score'] = score
-                    filtered_results.append(result_dict)
+            async def _search_with_client(client: AsyncSearchClient) -> List[Dict]:
+                search_start_local = time.time()
+                results_local = await client.search(
+                    search_text=query,
+                    vector_queries=[vector_query],
+                    select=["id", "content", "title", "document_id", "source", "chunk_id", 
+                           "document_type", "company", "filing_date", "section_type", 
+                           "page_number", "credibility_score", "processed_at", "citation_info",
+                           "ticker", "cik", "form_type", "accession_number", "industry", 
+                           "document_url", "sic", "entity_type", "period_end_date", 
+                           "chunk_index", "content_type", "chunk_method", "file_size"],
+                    filter=filters,
+                    top=top_k,
+                    query_type="semantic",                semantic_configuration_name="default-semantic-config"
+                )
+                _ = time.time() - search_start_local
+                filtered: List[Dict] = []
+                async for r in results_local:
+                    rdict = dict(r)
+                    score = getattr(r, '@search.score', 0.0)
+                    if score >= min_score:
+                        rdict['search_score'] = score
+                        filtered.append(rdict)
+                return filtered
+
+            # If configured, search both policy and claims indexes in parallel and merge
+            search_tasks: List = []
+            if getattr(settings, 'AZURE_SEARCH_QUERY_BOTH_INDEXES', False):
+                index_names = list({
+                    settings.AZURE_SEARCH_POLICY_INDEX_NAME or settings.AZURE_SEARCH_INDEX_NAME,
+                    settings.AZURE_SEARCH_CLAIMS_INDEX_NAME or settings.AZURE_SEARCH_INDEX_NAME,
+                })
+                clients = [self.get_search_client_for_index(ix) for ix in index_names if ix]
+                for c in clients:
+                    search_tasks.append(_search_with_client(c))
+                merged_lists = await asyncio.gather(*search_tasks)
+                filtered_results = [item for sub in merged_lists for item in sub]
+                # Deduplicate by id, keep highest score
+                best_by_id: Dict[str, Dict] = {}
+                for item in filtered_results:
+                    if item['id'] not in best_by_id or item['search_score'] > best_by_id[item['id']]['search_score']:
+                        best_by_id[item['id']] = item
+                filtered_results = sorted(best_by_id.values(), key=lambda x: x.get('search_score', 0), reverse=True)[:top_k]
+            else:
+                filtered_results = await _search_with_client(self.search_client)
             
             elapsed_time = time.time() - start_time
             logger.debug(f"✅ [Thread-{thread_id}] Hybrid search completed in {elapsed_time:.2f}s (embedding: {search_start - start_time:.2f}s, search: {search_time:.2f}s, found: {len(filtered_results)} results)")
@@ -637,6 +660,80 @@ class AzureServiceManager:
             return False
             
         return True
+
+    # --- Multi-index helpers ---
+    def get_search_client_for_index(self, index_name: str) -> AsyncSearchClient:
+        return AsyncSearchClient(
+            endpoint=self._search_endpoint,
+            index_name=index_name,
+            credential=self._search_credential,
+        )
+
+    async def add_documents_to_index_name(self, index_name: str, documents: List[Dict]) -> bool:
+        try:
+            client = self.get_search_client_for_index(index_name)
+            validated_documents = []
+            for doc in documents:
+                if self._validate_document_schema(doc):
+                    validated_documents.append(doc)
+            if not validated_documents:
+                return False
+            await client.upload_documents(validated_documents)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add documents to index '{index_name}': {e}")
+            return False
+
+    async def list_unique_documents(self, index_name: str, top_k: int = 200) -> List[Dict]:
+        """Return a lightweight list of unique documents from a given index.
+        Groups by document_id; picks earliest chunk as representative.
+        """
+        try:
+            client = self.get_search_client_for_index(index_name)
+            results = await client.search(
+                search_text="*",
+                select=[
+                    "id", "document_id", "source", "processed_at", "file_size", "title"
+                ],
+                top=top_k,
+            )
+            docs_by_id: Dict[str, Dict] = {}
+            async for r in results:
+                rd = dict(r)
+                doc_id = rd.get("document_id") or rd.get("id")
+                if not doc_id:
+                    continue
+                if doc_id not in docs_by_id:
+                    docs_by_id[doc_id] = {
+                        "id": doc_id,
+                        "filename": rd.get("source") or rd.get("title") or doc_id,
+                        "uploadDate": rd.get("processed_at"),
+                        "size": rd.get("file_size") or 0,
+                    }
+            return list(docs_by_id.values())
+        except Exception as e:
+            logger.error(f"Failed to list documents from index '{index_name}': {e}")
+            return []
+
+    async def get_chunks_for_document(self, index_name: str, document_id: str, top_k: int = 1000) -> List[Dict]:
+        """Return all chunks for a given document_id from the specified index."""
+        try:
+            client = self.get_search_client_for_index(index_name)
+            filter_expr = f"document_id eq '{document_id}'"
+            results = await client.search(
+                search_text="*",
+                select=["id", "content", "metadata", "chunk_id", "section_type", "chunk_index", "source", "processed_at"],
+                filter=filter_expr,
+                top=top_k,
+            )
+            chunks: List[Dict] = []
+            async for r in results:
+                rd = dict(r)
+                chunks.append(rd)
+            return chunks
+        except Exception as e:
+            logger.error(f"Failed to get chunks for document '{document_id}' from index '{index_name}': {e}")
+            return []
         
     async def analyze_document(self, document_content: bytes, content_type: str, filename: str = None) -> Dict:
         """Analyze document using Azure Document Intelligence with enhanced financial document processing"""

@@ -30,18 +30,37 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
   const [activeTab, setActiveTab] = useState('upload');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [searchText, setSearchText] = useState<string>('');
+  const [indexFilter, setIndexFilter] = useState<string>('all');
+  const [previewOpen, setPreviewOpen] = useState<boolean>(false);
+  const [previewDoc, setPreviewDoc] = useState<{ id: string; index: 'policy' | 'claims' } | null>(null);
+  const [previewChunks, setPreviewChunks] = useState<any[]>([]);
+  const [previewLoading, setPreviewLoading] = useState<boolean>(false);
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = async () => {
-    setLoading(true);
+  // Live polling for status updates when viewing library or during upload
+  useEffect(() => {
+    const shouldPoll = activeTab === 'documents' || isUploading;
+    if (!shouldPoll) return;
+    const id = setInterval(() => {
+      loadData({ silent: true });
+    }, 3000);
+    return () => clearInterval(id);
+  }, [activeTab, isUploading]);
+
+  const loadData = async (opts: { silent?: boolean } = {}) => {
+    if (!opts.silent) setLoading(true);
     setError(null);
     
     try {
       const [documentsResponse, conflictsResponse, metricsResponse] = await Promise.all([
-        apiService.listDocuments(),
+        apiService.listDocuments(indexFilter !== 'all' ? { index: indexFilter } as any : undefined as any),
         apiService.getConflicts(),
         apiService.getKnowledgeBaseMetrics()
       ]);
@@ -53,7 +72,7 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
       setError(err instanceof Error ? err.message : 'Failed to load data');
       console.error('Error loading data:', err);
     } finally {
-      setLoading(false);
+      if (!opts.silent) setLoading(false);
     }
   };
 
@@ -170,10 +189,8 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Knowledge Base Management</h1>
-          <p className="text-muted-foreground">
-            Upload, process, and manage financial documents for RAG analysis
-          </p>
+          <h1 className="text-2xl font-semibold">Documents</h1>
+          <p className="text-muted-foreground text-sm">Upload policy documents, applications, or claims for AI analysis</p>
         </div>
         <Button onClick={loadData} variant="outline" disabled={loading}>
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -189,24 +206,32 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="upload">Document Upload</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="upload">Upload Documents</TabsTrigger>
           <TabsTrigger value="documents">Document Library</TabsTrigger>
-          <TabsTrigger value="chunking">Chunking Visualization</TabsTrigger>
-          <TabsTrigger value="conflicts">Conflict Resolution</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="chunking">Chunk Visualization</TabsTrigger>
         </TabsList>
 
         <TabsContent value="upload" className="space-y-4">
-          <Card>
+          <Card className={`border-dashed ${isDragging ? 'border-blue-500 bg-blue-50/40' : ''}`}
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDragging(false);
+              const files = e.dataTransfer.files;
+              if (files && files.length > 0) {
+                setSelectedFiles(files);
+              }
+            }}
+          >
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Upload className="h-5 w-5" />
-                Upload Financial Documents
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Upload className="h-4 w-4" />
+                Upload Policy Documents
               </CardTitle>
-              <CardDescription>
-                Upload 10-K, 10-Q, and other financial reports for processing and analysis
-              </CardDescription>
+              <CardDescription className="text-xs">Drag and drop files here, or click to browse. Supports PDF, DOC, DOCX files up to 10MB.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid w-full max-w-sm items-center gap-1.5">
@@ -219,9 +244,7 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
                   onChange={(e) => setSelectedFiles(e.target.files)}
                   disabled={isUploading}
                 />
-                <p className="text-sm text-muted-foreground">
-                  Supported formats: PDF, DOCX, TXT (Max 10MB per file)
-                </p>
+                <p className="text-xs text-muted-foreground">Supported formats: PDF, DOCX, TXT (Max 10MB per file)</p>
               </div>
 
               {selectedFiles && selectedFiles.length > 0 && (
@@ -249,18 +272,37 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
                 </div>
               )}
 
-              <Button
-                onClick={handleFileUpload}
-                disabled={!selectedFiles || selectedFiles.length === 0 || isUploading}
-                className="w-full"
-              >
-                {isUploading ? 'Uploading...' : 'Upload Documents'}
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={handleFileUpload} disabled={!selectedFiles || selectedFiles.length === 0 || isUploading}>
+                  {isUploading ? 'Uploading…' : 'Browse Files'}
+                </Button>
+                <Button variant="outline" onClick={loadData} disabled={loading}>Refresh</Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">
+          {/* Quick Stats */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Total Documents</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-semibold">{documents.length}</div></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Completed</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-semibold">{documents.filter(d => d.status === 'completed').length}</div></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Processing</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-semibold">{documents.filter(d => d.status === 'processing').length}</div></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Failed</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-semibold">{documents.filter(d => d.status === 'failed').length}</div></CardContent>
+            </Card>
+          </div>
+
           <Card>
             <CardHeader>
               <CardTitle>Document Library</CardTitle>
@@ -269,11 +311,40 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Filters */}
+              <div className="flex flex-wrap gap-2 items-center mb-4">
+                <input
+                  className="border rounded px-2 py-1 text-sm"
+                  placeholder="Search filename…"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                />
+                <select className="border rounded px-2 py-1 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="all">All Statuses</option>
+                  <option value="completed">Completed</option>
+                  <option value="processing">Processing</option>
+                  <option value="failed">Failed</option>
+                </select>
+                <select className="border rounded px-2 py-1 text-sm" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                  <option value="all">All Types</option>
+                  {[...new Set(documents.map(d => d.type))].map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+                <select className="border rounded px-2 py-1 text-sm" value={indexFilter} onChange={(e) => { setIndexFilter(e.target.value); loadData({ silent: true }); }}>
+                  <option value="all">All Indexes</option>
+                  <option value="policy">Policy</option>
+                  <option value="claims">Claims</option>
+                </select>
+                <Button variant="outline" size="sm" onClick={() => { setStatusFilter('all'); setTypeFilter('all'); setSearchText(''); }}>Clear</Button>
+              </div>
+
               <Table>
                 <TableHeader>
-                  <TableRow>
+                   <TableRow>
                     <TableHead>Document</TableHead>
                     <TableHead>Type</TableHead>
+                     <TableHead>Index</TableHead>
                     <TableHead>Size</TableHead>
                     <TableHead>Upload Date</TableHead>
                     <TableHead>Status</TableHead>
@@ -283,7 +354,11 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {documents.map((doc) => (
+                  {documents
+                    .filter(d => (statusFilter === 'all' ? true : d.status === statusFilter))
+                    .filter(d => (typeFilter === 'all' ? true : d.type === typeFilter))
+                    .filter(d => (searchText ? d.filename.toLowerCase().includes(searchText.toLowerCase()) : true))
+                    .map((doc) => (
                     <TableRow key={doc.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
@@ -292,16 +367,18 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
                         </div>
                       </TableCell>
                       <TableCell>{doc.type}</TableCell>
+                      <TableCell>{(doc as any).index || 'policy'}</TableCell>
                       <TableCell>{formatFileSize(doc.size)}</TableCell>
                       <TableCell>{formatDate(doc.uploadDate)}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           {getStatusIcon(doc.status)}
                           {getStatusBadge(doc.status)}
-                          {doc.status === 'processing' && doc.processingProgress && (
-                            <span className="text-xs text-muted-foreground">
-                              ({doc.processingProgress}%)
-                            </span>
+                          {doc.status === 'processing' && (
+                            <div className="flex items-center gap-2 min-w-[120px]">
+                              <Progress value={doc.processingProgress || 5} className="w-24" />
+                              <span className="text-xs text-muted-foreground">{doc.processingProgress || 5}%</span>
+                            </div>
                           )}
                         </div>
                       </TableCell>
@@ -315,7 +392,21 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" onClick={async () => {
+                            setPreviewDoc({ id: doc.id, index: ((doc as any).index || 'policy') as any });
+                            setPreviewLoading(true);
+                            setPreviewOpen(true);
+                            try {
+                              const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+                              const res = await fetch(`${apiBaseUrl}/knowledge-base/documents/${doc.id}/chunks?index=${(doc as any).index || 'policy'}`);
+                              const data = await res.json();
+                              setPreviewChunks(data.chunks || []);
+                            } catch (e) {
+                              setPreviewChunks([]);
+                            } finally {
+                              setPreviewLoading(false);
+                            }
+                          }}>
                             <Eye className="h-4 w-4" />
                           </Button>
                           <Button variant="outline" size="sm">
@@ -336,63 +427,39 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
               </Table>
             </CardContent>
           </Card>
+
+          {/* Preview Drawer */}
+          {previewOpen && (
+            <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setPreviewOpen(false)} />
+          )}
+          <div className={`fixed right-0 top-0 h-full w-full sm:w-[560px] z-50 bg-background border-l transition-transform ${previewOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div className="p-4 border-b flex items-center justify-between">
+              <div className="text-sm font-medium">Document Chunks {previewDoc ? `(${previewDoc.index})` : ''}</div>
+              <Button variant="outline" size="sm" onClick={() => setPreviewOpen(false)}>Close</Button>
+            </div>
+            <div className="p-4 overflow-y-auto h-[calc(100%-56px)]">
+              {previewLoading ? (
+                <div className="text-sm text-muted-foreground">Loading chunks…</div>
+              ) : (
+                <div className="space-y-3">
+                  {previewChunks.map((c, i) => (
+                    <div key={i} className="border rounded p-3 text-xs">
+                      <div className="text-muted-foreground mb-1">Chunk ID: {c.chunk_id || c.id}</div>
+                      <div className="whitespace-pre-wrap">{c.content}</div>
+                      {c.metadata && (
+                        <div className="mt-2 text-muted-foreground">Meta: {JSON.stringify(c.metadata)}</div>
+                      )}
+                    </div>
+                  ))}
+                  {previewChunks.length === 0 && <div className="text-xs text-muted-foreground">No chunks found.</div>}
+                </div>
+              )}
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="chunking" className="space-y-4">
           <ChunkingVisualization />
-        </TabsContent>
-
-        <TabsContent value="conflicts" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Conflict Resolution</CardTitle>
-              <CardDescription>
-                Review and resolve conflicts between documents and data sources
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {conflicts.map((conflict) => (
-                  <Card key={conflict.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Badge variant={conflict.conflictType === 'contradiction' ? 'destructive' : 'secondary'}>
-                              {conflict.conflictType}
-                            </Badge>
-                            {getStatusBadge(conflict.status)}
-                          </div>
-                          <p className="text-sm font-medium">{conflict.description}</p>
-                          <div className="text-xs text-muted-foreground">
-                            <p>Sources: {conflict.sources.join(', ')}</p>
-                            <p>Chunk ID: {conflict.chunkId}</p>
-                          </div>
-                        </div>
-                        {conflict.status === 'pending' && (
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleResolveConflict(conflict.id, 'resolve')}
-                            >
-                              Resolve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleResolveConflict(conflict.id, 'ignore')}
-                            >
-                              Ignore
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="analytics" className="space-y-4">

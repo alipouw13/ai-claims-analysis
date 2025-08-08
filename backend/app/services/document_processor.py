@@ -10,6 +10,7 @@ import json
 from app.services.azure_services import AzureServiceManager
 from app.core.config import settings
 from app.core.observability import observability
+from app.utils.policy_claim_chunker import extract_text_from_bytes, chunk_policy_text, chunk_claim_text
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,8 @@ class DocumentProcessor:
         self.financial_metrics_patterns = self._initialize_metrics_patterns()
         
     async def process_document(self, content: bytes, content_type: str, 
-                             source: str, metadata: Dict = None) -> Dict:
+                             source: str, metadata: Dict = None, 
+                             target_index_name: Optional[str] = None) -> Dict:
         """
         Enhanced document processing pipeline for financial documents
         
@@ -76,11 +78,20 @@ class DocumentProcessor:
             
             observability.track_document_processing_start(source, content_type)
             
-            logger.info(f"Step 1: Calling Azure Document Intelligence...")
-            extracted_content = await self.azure_manager.analyze_document(content, content_type)
-            logger.info(f"Step 1 COMPLETE: Document analysis finished")
-            logger.info(f"Extracted content length: {len(extracted_content.get('content', ''))}")
-            logger.info(f"Tables found: {len(extracted_content.get('tables', []))}")
+            logger.info(f"Step 1: Extracting text (Azure DI if configured, fallback to local parsers)...")
+            extracted_content = {}
+            use_local = False
+            try:
+                if self.azure_manager and getattr(self.azure_manager, 'form_recognizer_client', None) and settings.AZURE_FORM_RECOGNIZER_ENDPOINT.startswith("https://"):
+                    extracted_content = await self.azure_manager.analyze_document(content, content_type)
+                else:
+                    use_local = True
+            except Exception:
+                use_local = True
+            if use_local:
+                text = extract_text_from_bytes(content, content_type)
+                extracted_content = {"content": text, "tables": [], "key_value_pairs": {}, "pages": 0}
+            logger.info(f"Step 1 COMPLETE: Content length: {len(extracted_content.get('content', ''))}")
             
             logger.info(f"Step 2: Generating document ID...")
             document_id = self._generate_document_id(source, extracted_content["content"])
@@ -98,23 +109,21 @@ class DocumentProcessor:
             )
             logger.info(f"Step 4 COMPLETE: Document structure parsed")
             
-            logger.info(f"Step 5: Creating markdown chunks...")
-            try:
-                chunks = await self._create_markdown_chunks(
-                    document_structure, 
-                    document_id,
-                    {**(metadata or {}), **financial_info}
-                )
-                logger.info(f"Step 5 COMPLETE: Created {len(chunks)} chunks using markdown chunking")
-            except Exception as e:
-                logger.warning(f"Markdown chunking failed: {e}, falling back to basic chunking")
-                # Fallback to basic text chunking
-                chunks = await self._create_basic_chunks(
-                    extracted_content["content"],
-                    document_id,
-                    {**(metadata or {}), **financial_info}
-                )
-                logger.info(f"Step 5 COMPLETE (FALLBACK): Created {len(chunks)} chunks using basic chunking")
+            logger.info(f"Step 5: Creating domain-specific chunks...")
+            chunks = []
+            domain = 'policy'
+            if (metadata or {}).get('is_claim'):
+                domain = 'claim'
+            text_for_chunking = extracted_content.get("content", "")
+            if domain == 'policy':
+                for c in chunk_policy_text(text_for_chunking):
+                    chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata={**(metadata or {}), **financial_info, **c["metadata"]}))
+            else:
+                for c in chunk_claim_text(text_for_chunking):
+                    chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata={**(metadata or {}), **financial_info, **c["metadata"]}))
+            if not chunks:
+                chunks = await self._create_basic_chunks(text_for_chunking, document_id, {**(metadata or {}), **financial_info})
+            logger.info(f"Step 5 COMPLETE: Created {len(chunks)} {domain} chunks")
             
             logger.info(f"Step 6: Generating embeddings for chunks...")
             # Extract embedding model from metadata
@@ -170,7 +179,11 @@ class DocumentProcessor:
             # Add documents to Azure Search index
             if search_documents:
                 logger.info(f"Attempting to add {len(search_documents)} chunks for document {document_id} to search index")
-                success = await self.azure_manager.add_documents_to_index(search_documents)
+                if target_index_name:
+                    logger.info(f"Targeting custom index: {target_index_name}")
+                    success = await self.azure_manager.add_documents_to_index_name(target_index_name, search_documents)
+                else:
+                    success = await self.azure_manager.add_documents_to_index(search_documents)
                 if not success:
                     logger.error(f"FAILED to add chunks for document {document_id} to search index")
                 else:

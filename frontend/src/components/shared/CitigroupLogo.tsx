@@ -18,41 +18,16 @@ export const CitigroupLogo: React.FC<CitigroupLogoProps> = ({
   return (
     <div className={`${sizeClasses[size]} ${className}`}>
       <svg
-        viewBox="0 0 200 50"
-        fill="none"
+        viewBox="0 0 240 50"
         xmlns="http://www.w3.org/2000/svg"
         className="w-full h-full"
       >
-        {/* Citigroup logo - simplified recreation */}
-        {/* Red arc (iconic Citi umbrella) */}
-        <path
-          d="M8 25 C8 15, 18 8, 30 8 C42 8, 52 15, 52 25"
-          stroke="#EE1C25"
-          strokeWidth="8"
-          fill="none"
-          strokeLinecap="round"
-        />
-        {/* "citi" text */}
-        <text
-          x="8"
-          y="40"
-          fontSize="18"
-          fontWeight="bold"
-          fill="#004685"
-          fontFamily="Arial, sans-serif"
-        >
-          citi
+        {/* MSFT Insurance wordmark (simple, neutral) */}
+        <text x="0" y="28" fontSize="20" fontWeight="700" fill="#1F2937" fontFamily="Segoe UI, Arial, sans-serif">
+          MSFT Insurance
         </text>
-        {/* "group" text */}
-        <text
-          x="60"
-          y="40"
-          fontSize="18"
-          fontWeight="bold"
-          fill="#004685"
-          fontFamily="Arial, sans-serif"
-        >
-          group
+        <text x="0" y="45" fontSize="12" fontWeight="500" fill="#6B7280" fontFamily="Segoe UI, Arial, sans-serif">
+          AI Assistant
         </text>
       </svg>
     </div>

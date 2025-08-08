@@ -18,6 +18,7 @@ from app.models.schemas import (
 from app.core.observability import observability
 from app.services.document_processor import DocumentProcessor
 from app.services.azure_services import AzureServiceManager
+from app.core.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -94,7 +95,9 @@ async def upload_documents(
                     "temperature": temperature,
                     "upload_timestamp": datetime.utcnow().isoformat(),
                     "file_size": len(file_content),
-                    "file_extension": file_extension
+                    "file_extension": file_extension,
+                    # If form includes is_claim=true (from customer UI), mark for claims index
+                    "is_claim": (request.form and (await request.form()).get('is_claim') == 'true') if hasattr(request, 'form') else False
                 }
                 
                 logger.info(f"Starting document processing: {document_id}, type: {document_type}, file: {file.filename}")
@@ -102,6 +105,12 @@ async def upload_documents(
                 logger.info(f"Content type: {content_type}")
                 
                 logger.info(f"Creating async task for document processing...")
+                # Determine target index: policy vs claims
+                target_index = settings.AZURE_SEARCH_POLICY_INDEX_NAME
+                # If metadata hints this is a claim, route to claims index (for Customer Submit Claim path)
+                if metadata.get("is_claim"):
+                    target_index = settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
+
                 asyncio.create_task(
                     process_document_async(
                         document_processor, 
@@ -109,7 +118,8 @@ async def upload_documents(
                         content_type, 
                         file.filename, 
                         document_id,
-                        metadata
+                        metadata,
+                        target_index
                     )
                 )
                 logger.info(f"Async task created for document {document_id}")
@@ -145,7 +155,8 @@ async def process_document_async(
     content_type: str,
     filename: str,
     document_id: str,
-    metadata: dict
+    metadata: dict,
+    target_index_name: str | None = None
 ):
     """Asynchronously process document with Azure Document Intelligence"""
     try:
@@ -163,7 +174,8 @@ async def process_document_async(
             content=content,
             content_type=content_type,
             source=filename,
-            metadata=metadata
+            metadata=metadata,
+            target_index_name=target_index_name
         )
         
         processing_time = time.time() - start_time

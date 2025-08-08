@@ -116,6 +116,7 @@ interface QAContainerProps {
 
 export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings }) => {
   const [questions, setQuestions] = useState<QAQuestion[]>([]);
+  const [riskPreset, setRiskPreset] = useState<string>("");
   const [answers, setAnswers] = useState<QAAnswer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isVerifyingSourcesForAnswer, setIsVerifyingSourcesForAnswer] = useState<string | null>(null);
@@ -318,6 +319,7 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings }) => {
     question: string, 
     verificationLevel: 'basic' | 'thorough' | 'comprehensive'
   ) => {
+    const finalQuestion = riskPreset ? `${riskPreset}\n\n${question}` : question;
     const qaQuestion: QAQuestion = {
       id: Date.now().toString(),
       question,
@@ -333,7 +335,7 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings }) => {
         : (selectedModel?.model_name || evaluationModel);
 
       const data = await apiService.askQuestion({
-        question,
+        question: finalQuestion,
         session_id: currentSessionId,
         verification_level: verificationLevel,
         chat_model: modelSettings.selectedModel,
@@ -408,6 +410,22 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings }) => {
       setIsLoading(false);
     }
   };
+
+  // Simple preset panel
+  const riskPrompts = [
+    {
+      label: 'Coverage exclusions for claim',
+      text: 'You are an insurance risk analyst. Use both policy and claims indexes to: (1) identify relevant policy sections, (2) list applicable exclusions with citations, (3) assess whether the claim facts are excluded. Provide citations for both policy chunks and claim chunks.',
+    },
+    {
+      label: 'Claim settlement reasonableness',
+      text: 'You are an underwriter. Compare policy coverage terms with the claim loss description and notes. Determine likely coverage and a reasonable settlement range. Cite policy and claim text that supports your recommendation.',
+    },
+    {
+      label: 'Policy limits vs claimed loss',
+      text: 'Analyze policy limits/deductibles and the claimed loss. Determine if limits are exceeded, and summarize the applicable limit and deductible clauses with citations.',
+    },
+  ];
 
   const handleDecomposeQuestion = async (question: string) => {
     try {
@@ -548,6 +566,24 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings }) => {
       <ResizablePanelGroup direction="horizontal" className="min-h-screen">
         <ResizablePanel defaultSize={75} minSize={50}>
           <div className="flex flex-col h-full">
+            {/* Risk Analysis Presets */}
+            <div className="px-4 pt-4">
+              <div className="border rounded p-3 text-xs flex items-center gap-2 flex-wrap">
+                <span className="text-muted-foreground">Risk Analysis Presets:</span>
+                {riskPrompts.map((p) => (
+                  <button
+                    key={p.label}
+                    className={`px-2 py-1 rounded border ${riskPreset === p.text ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                    onClick={() => setRiskPreset(riskPreset === p.text ? '' : p.text)}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+                {riskPreset && (
+                  <button className="ml-auto text-muted-foreground underline" onClick={() => setRiskPreset('')}>Clear preset</button>
+                )}
+              </div>
+            </div>
             <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
               <div className="space-y-6">
                 {questions.map((question, index) => {

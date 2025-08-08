@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     
     AZURE_SEARCH_SERVICE_NAME: str = os.getenv("AZURE_SEARCH_SERVICE_NAME", "")
     AZURE_SEARCH_INDEX_NAME: str = os.getenv("AZURE_SEARCH_INDEX_NAME", "financial-documents")
+    # Separate indexes for policy documents vs claim documents
+    AZURE_SEARCH_POLICY_INDEX_NAME: str = os.getenv("AZURE_SEARCH_POLICY_INDEX_NAME", "policy-documents")
+    AZURE_SEARCH_CLAIMS_INDEX_NAME: str = os.getenv("AZURE_SEARCH_CLAIMS_INDEX_NAME", "claims-documents")
+    AZURE_SEARCH_QUERY_BOTH_INDEXES: bool = os.getenv("AZURE_SEARCH_QUERY_BOTH_INDEXES", "true").lower() == "true"
     AZURE_SEARCH_API_VERSION: str = os.getenv("AZURE_SEARCH_API_VERSION", "2023-11-01")
     AZURE_SEARCH_API_KEY: str = os.getenv("AZURE_SEARCH_API_KEY", "")
     

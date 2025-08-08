@@ -176,42 +176,8 @@ export const ModelConfiguration: React.FC<ModelConfigurationProps> = ({
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {onThemeChange && (
-              <>
-                <button
-                  onClick={() => onThemeChange(theme === 'customer' ? 'light' : 'customer')}
-                  className={`flex items-center gap-2 px-3 py-1 text-sm rounded-md transition-colors ${
-                    theme === 'customer'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                  }`}
-                >
-                  <Building2 className="h-4 w-4" />
-                  Customer
-                </button>
-                <button
-                  onClick={() => onThemeChange(theme === 'light' ? 'dark' : 'light')}
-                  className={`flex items-center gap-2 px-3 py-1 text-sm rounded-md transition-colors ${
-                    theme === 'customer' ? 'opacity-50 cursor-not-allowed' : ''
-                  } bg-secondary text-secondary-foreground hover:bg-secondary/80`}
-                  disabled={theme === 'customer'}
-                >
-                  {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-                  {theme === 'light' ? 'Dark' : 'Light'}
-                </button>
-              </>
-            )}
-            {onToggleAdvanced && (
-              <button
-                onClick={onToggleAdvanced}
-                className="flex items-center gap-2 px-3 py-1 text-sm rounded-md transition-colors bg-secondary text-secondary-foreground hover:bg-secondary/80"
-              >
-                <Settings className="h-4 w-4" />
-                Advanced
-              </button>
-            )}
-          </div>
+          {/* Persona/theme/advanced toggles were moved to the global header per design */}
+          <div />
         </div>
 
         {modelLoadError && (

@@ -12,6 +12,8 @@ from app.models.schemas import (
     DocumentStatus
 )
 from app.core.observability import observability
+from app.services.azure_services import AzureServiceManager
+from app.core.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -88,55 +90,45 @@ async def list_documents(
     document_type: Optional[str] = None,
     status: Optional[str] = None,
     limit: int = 100,
-    offset: int = 0
+    offset: int = 0,
+    index: Optional[str] = None
 ):
-    """List documents in the knowledge base"""
+    """List documents in the knowledge base (policy/claims)."""
     try:
         observability.track_request("list_documents")
-        
-        documents = [
-            {
-                "id": "1",
-                "filename": "AAPL_10K_2023.pdf",
-                "type": "10-K",
-                "size": 2048576,
-                "uploadDate": "2024-01-15T10:30:00Z",
-                "status": "completed",
-                "chunks": 156,
-                "conflicts": 2
-            },
-            {
-                "id": "2",
-                "filename": "MSFT_10Q_Q3_2023.pdf",
-                "type": "10-Q",
-                "size": 1536000,
-                "uploadDate": "2024-01-14T14:20:00Z",
-                "status": "processing",
-                "chunks": 89,
-                "processingProgress": 75
-            },
-            {
-                "id": "3",
-                "filename": "GOOGL_Annual_Report_2023.pdf",
-                "type": "Annual Report",
-                "size": 3072000,
-                "uploadDate": "2024-01-13T09:15:00Z",
-                "status": "failed",
-                "chunks": 0,
-                "conflicts": 0
-            }
-        ]
-        
-        if document_type:
-            documents = [d for d in documents if d["type"] == document_type]
-        
-        if status:
-            documents = [d for d in documents if d["status"] == status]
-        
+        azure_manager = AzureServiceManager()
+        await azure_manager.initialize()
+
+        # Resolve indexes to list from
+        indexes = []
+        req_index = (index or "").lower()
+        if req_index == "policy":
+            indexes = [settings.AZURE_SEARCH_POLICY_INDEX_NAME]
+        elif req_index == "claims" or req_index == "claim":
+            indexes = [settings.AZURE_SEARCH_CLAIMS_INDEX_NAME]
+        else:
+            indexes = [settings.AZURE_SEARCH_POLICY_INDEX_NAME, settings.AZURE_SEARCH_CLAIMS_INDEX_NAME]
+
+        documents: List[Dict] = []
+        for ix in indexes:
+            try:
+                if not ix:
+                    continue
+                items = await azure_manager.list_unique_documents(ix)
+                for d in items:
+                    d["index"] = "policy" if ix == settings.AZURE_SEARCH_POLICY_INDEX_NAME else "claims"
+                    d["status"] = "completed"  # basic status for now
+                    d.setdefault("type", "")
+                    d.setdefault("chunks", None)
+                    d.setdefault("conflicts", None)
+                documents.extend(items)
+            except Exception as e:
+                logger.warning(f"Skipping index '{ix}' due to error: {e}")
+
         return {"documents": documents}
     except Exception as e:
         logger.error(f"Error listing documents: {e}")
-        raise HTTPException(status_code=500, detail="Failed to list documents")
+        raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
 
 @router.get("/documents/{document_id}", response_model=DocumentInfo)
 async def get_document(document_id: str):
@@ -150,6 +142,18 @@ async def get_document(document_id: str):
     except Exception as e:
         logger.error(f"Error getting document {document_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve document")
+
+@router.get("/documents/{document_id}/chunks")
+async def get_document_chunks(document_id: str, index: str = "policy"):
+    try:
+        azure_manager = AzureServiceManager()
+        await azure_manager.initialize()
+        ix_name = settings.AZURE_SEARCH_POLICY_INDEX_NAME if index.lower() == "policy" else settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
+        chunks = await azure_manager.get_chunks_for_document(ix_name, document_id)
+        return {"document_id": document_id, "index": index, "chunks": chunks, "total": len(chunks)}
+    except Exception as e:
+        logger.error(f"Error getting document chunks: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve chunks")
 
 @router.delete("/documents/{document_id}")
 async def delete_document(document_id: str):
