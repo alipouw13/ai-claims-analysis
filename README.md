@@ -1,6 +1,6 @@
-# RAG Financial POC - Adaptive Knowledge Base Management
+# MSFT Insurance – Agentic AI Claims Assistant
 
-A comprehensive Retrieval Augmented Generation (RAG) system designed for financial document analysis, featuring adaptive knowledge base management, multi-agent orchestration, and advanced observability.
+Production-ready claims assistant combining document ingestion, Azure AI Search-based RAG, multi-agent orchestration, Durable Functions, and MCP tools. Frontend provides three personas: Customer, Underwriter, Admin.
 
 ## Overview
 
@@ -206,6 +206,18 @@ The system includes a comprehensive MCP server that can be used by Claude, VS Co
 cd mcp_server
 python streaming_mcp_server.py --mode http --port 8000
 ```
+
+### Durable Functions Orchestration
+
+Use the Durable Functions reference from "Durable-Functions-For-Agentic-Workflows". Deploy an orchestrator named `agent_orchestrator` with activities:
+- `ingest_document`: Document Intelligence → chunk → embed → Azure AI Search index
+- `answer_question`: Hybrid search → agent reasoning → citations → optional AI Foundry evals
+
+This repo includes:
+- `backend/app/services/durable_client.py`: minimal durable client
+- `backend/app/api/routes/workflows.py`: endpoints to start and monitor instances
+
+Set `DURABLE_FUNCTIONS_BASE_URL` and optionally `DURABLE_FUNCTIONS_API_KEY`.
 
 ### Available MCP Tools
 

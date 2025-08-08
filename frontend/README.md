@@ -1,3 +1,14 @@
+UI built to mirror Customer, Underwriter, and Admin views from the screenshots.
+
+- Customer: Claims summary, Submit Claim (upload), Ask Questions (chat over claims).
+- Underwriter: Same as Admin minus config/evals/monitoring panels.
+- Admin: Monitoring, Configuration, AI Evaluations dashboard using Azure AI Foundry Evals.
+
+Environment:
+- VITE_API_BASE_URL=http://localhost:8000/api/v1
+
+Start: `npm run dev`
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

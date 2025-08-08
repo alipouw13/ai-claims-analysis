@@ -339,7 +339,7 @@ class FinancialMCPServer:
             logger.error(f"Error initializing MCP server: {e}")
             raise
 
-class MCPServerManager:
+        class MCPServerManager:
     """Manager for multiple MCP servers"""
     
     def __init__(self):
@@ -386,6 +386,7 @@ class MCPServerManager:
         return await server.handle_resource_read(resource_uri)
     
     def get_all_tools(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Return tools exposed by all MCP servers; used by UI and orchestration."""
         """Get tools from all servers"""
         all_tools = {}
         for name, server in self.servers.items():

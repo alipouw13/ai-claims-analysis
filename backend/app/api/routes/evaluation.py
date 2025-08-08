@@ -15,6 +15,7 @@ from app.models.schemas import (
     EvaluatorType, EvaluationMetric
 )
 from app.services.evaluation_service import evaluation_service
+from app.core.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -33,6 +34,9 @@ async def evaluate_answer(
     If background=False (default), waits for evaluation to complete and returns the result.
     """
     try:
+        # Ensure AI Foundry project connection is available when evaluator_type is foundry
+        if request.evaluator_type.value == 'foundry' and not settings.AZURE_AI_PROJECT_CONNECTION_STRING:
+            raise HTTPException(status_code=400, detail="Azure AI Foundry connection string not configured")
         logger.info(f"Received evaluation request for question_id: {request.question_id}, background: {background}")
         
         # Get azure_manager from app state
