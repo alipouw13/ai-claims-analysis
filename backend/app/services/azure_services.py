@@ -258,27 +258,81 @@ class AzureServiceManager:
                 url=settings.AZURE_COSMOS_ENDPOINT,
                 credential=self.credential
             )
-            if hasattr(settings, 'AZURE_AI_PROJECT_ENDPOINT') and settings.AZURE_AI_PROJECT_ENDPOINT:
-                self.project_client = AIProjectClient(
-                    endpoint=settings.AZURE_AI_PROJECT_ENDPOINT,
-                    credential=DefaultAzureCredential()
-                    # Using default API version instead of specifying "latest"
-                )
-                self.ai_foundry_client = self.project_client  # For backward compatibility
-                logger.info("Azure AI Foundry project client initialized successfully")
-            elif all([
-                settings.AZURE_AI_FOUNDRY_PROJECT_NAME,
-                settings.AZURE_AI_FOUNDRY_RESOURCE_GROUP,
-                settings.AZURE_SUBSCRIPTION_ID
-            ]):
-                # Azure AI Foundry project endpoint construction is complex and varies by region
-                # For now, skip AI Foundry initialization if direct endpoint is not provided
-                logger.info("Azure AI Foundry project settings found but direct endpoint not provided. Skipping AI Foundry initialization.")
-                logger.info("To use Azure AI Foundry, please provide AZURE_AI_PROJECT_ENDPOINT in .env")
-                self.project_client = None
-                self.ai_foundry_client = None
-            else:
-                logger.info("Azure AI Foundry configuration not found, skipping AI Foundry client initialization")
+            # Initialize Azure AI Foundry (prefer endpoint+credential per latest SDK; fall back if needed)
+            self.project_client = None
+            self.ai_foundry_client = None
+            try:
+                from importlib.metadata import version, PackageNotFoundError
+            except Exception:
+                version = None  # Best effort only
+            try:
+                # Gather inputs
+                endpoint = getattr(settings, 'AZURE_AI_PROJECT_ENDPOINT', None)
+                conn_str = getattr(settings, 'AZURE_AI_PROJECT_CONNECTION_STRING', None)
+                subscription_id = getattr(settings, 'AZURE_SUBSCRIPTION_ID', None)
+                resource_group = getattr(settings, 'AZURE_AI_FOUNDRY_RESOURCE_GROUP', None) or os.getenv('AZURE_AI_PROJECT_RESOURCE_GROUP')
+                project_name = getattr(settings, 'AZURE_AI_PROJECT_NAME', None) or os.getenv('AZURE_AI_FOUNDRY_PROJECT_NAME')
+
+                # Try modern endpoint-only signature first (per docs). This is what the
+                # alipouw13/agenticrag sample uses as well.
+                if endpoint:
+                    try:
+                        # Prefer endpoint-only signature introduced in azure-ai-projects >= 1.0.0
+                        # Using DefaultAzureCredential here because many environments rely on az cli / managed identity.
+                        self.project_client = AIProjectClient(endpoint=endpoint, credential=DefaultAzureCredential())
+                        self.ai_foundry_client = self.project_client
+                        logger.info("Azure AI Foundry project client initialized via endpoint-only signature")
+                    except TypeError as te:
+                        # Library may be older and require the legacy signature; fall back below
+                        logger.info(f"Endpoint-only init not supported by installed azure-ai-projects: {te}")
+                        self.project_client = None
+                        self.ai_foundry_client = None
+                    except Exception as e:
+                        # If endpoint-only call fails for reasons other than signature, report and continue to fallback
+                        logger.error(f"Endpoint-only AIProjectClient init failed: {e}")
+                        self.project_client = None
+                        self.ai_foundry_client = None
+
+                # If still not initialized, parse connection string or use discrete vars for legacy signature
+                if self.project_client is None:
+                    if conn_str and not (subscription_id and resource_group and project_name):
+                        try:
+                            parts = [p for p in conn_str.replace('\n',';').split(';') if p]
+                            kv = {}
+                            raw = []
+                            for p in parts:
+                                if '=' in p:
+                                    k, v = p.split('=', 1)
+                                    kv[k.strip().lower()] = v.strip()
+                                else:
+                                    raw.append(p.strip())
+                            subscription_id = subscription_id or kv.get('subscriptionid') or kv.get('azuresubscriptionid') or (raw[0] if len(raw) > 0 else None)
+                            resource_group = resource_group or kv.get('resourcegroup') or kv.get('resourcegroupname') or (raw[1] if len(raw) > 1 else None)
+                            project_name = project_name or kv.get('projectname') or kv.get('project') or (raw[2] if len(raw) > 2 else None)
+                            endpoint = endpoint or kv.get('hostname') or kv.get('endpoint') or next((t for t in raw if t.startswith('http')), None)
+                        except Exception as parse_err:
+                            logger.warning(f"Could not parse AZURE_AI_PROJECT_CONNECTION_STRING: {parse_err}")
+
+                    if subscription_id and resource_group and project_name:
+                        kwargs = {
+                            'credential': DefaultAzureCredential(),
+                            'subscription_id': subscription_id,
+                            'resource_group_name': resource_group,
+                            'project_name': project_name,
+                        }
+                        if endpoint:
+                            kwargs['endpoint'] = endpoint
+                        self.project_client = AIProjectClient(**kwargs)
+                        self.ai_foundry_client = self.project_client
+                        logger.info("Azure AI Foundry project client initialized via legacy signature")
+
+                if self.project_client is None:
+                    if endpoint:
+                        logger.error("AI Foundry endpoint detected but client could not be initialized. Ensure azure-ai-projects >= 1.0.0 (pip install -U azure-ai-projects) and that this is a Foundry Project endpoint (not Cognitive Services). Docs: https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/develop/sdk-overview?pivots=programming-language-python")
+                    else:
+                        logger.info("Azure AI Foundry configuration not found; skipping initialization")
+            except Exception as e:
+                logger.error(f"Failed to initialize Azure AI Foundry client: {e}")
                 self.project_client = None
                 self.ai_foundry_client = None
             
@@ -492,6 +546,30 @@ class AzureServiceManager:
             )
             result = self.search_index_client.create_index(index)
             logger.info(f"Successfully created search index '{settings.AZURE_SEARCH_INDEX_NAME}'")
+            
+            # Also ensure policy and claims indexes exist if configured and distinct
+            try:
+                policy_ix = getattr(settings, 'AZURE_SEARCH_POLICY_INDEX_NAME', None)
+                claims_ix = getattr(settings, 'AZURE_SEARCH_CLAIMS_INDEX_NAME', None)
+                for ix_name in {policy_ix, claims_ix}:
+                    if not ix_name or ix_name == settings.AZURE_SEARCH_INDEX_NAME:
+                        continue
+                    try:
+                        self.search_index_client.get_index(ix_name)
+                        logger.info(f"Index '{ix_name}' already exists")
+                    except Exception:
+                        logger.info(f"Creating additional index '{ix_name}' for policy/claims separation")
+                        # Reuse same schema/vector/semantic configuration
+                        addl_index = SearchIndex(
+                            name=ix_name,
+                            fields=fields,
+                            vector_search=vector_search,
+                            semantic_search=semantic_search
+                        )
+                        self.search_index_client.create_index(addl_index)
+                        logger.info(f"Successfully created index '{ix_name}'")
+            except Exception as extra_err:
+                logger.warning(f"Failed to ensure policy/claims indexes: {extra_err}")
             return True
         except Exception as e:
             logger.error(f"Failed to ensure search index exists: {e}")

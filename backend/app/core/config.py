@@ -1,6 +1,35 @@
 from pydantic_settings import BaseSettings
 from typing import Optional, List
 import os
+from dotenv import load_dotenv
+from pathlib import Path
+
+def _load_env_files():
+    """Load .env/.enc from common locations: repo root and backend folder.
+    Ensures values in .enc override .env, and backend-specific files override root.
+    """
+    try:
+        here = Path(__file__).resolve()
+        backend_dir = here.parents[2]  # .../backend
+        repo_root = here.parents[3]    # repo root
+        candidates = [
+            repo_root / ".env",
+            repo_root / ".enc",
+            backend_dir / ".env",
+            backend_dir / ".enc",
+            Path.cwd() / ".env",
+            Path.cwd() / ".enc",
+        ]
+        # Load in order, later calls override earlier
+        for f in candidates:
+            if f.exists():
+                # .enc should override .env
+                load_dotenv(dotenv_path=str(f), override=True)
+    except Exception:
+        # Non-fatal: continue with OS env
+        pass
+
+_load_env_files()
 
 class Settings(BaseSettings):
     AZURE_TENANT_ID: str = os.getenv("AZURE_TENANT_ID", "")
@@ -70,7 +99,23 @@ class Settings(BaseSettings):
     AZURE_AI_FOUNDRY_RESOURCE_GROUP: str = os.getenv("AZURE_AI_FOUNDRY_RESOURCE_GROUP", "")
     AZURE_SUBSCRIPTION_ID: str = os.getenv("AZURE_SUBSCRIPTION_ID", "")
     AZURE_AI_FOUNDRY_WORKSPACE_NAME: str = os.getenv("AZURE_AI_FOUNDRY_WORKSPACE_NAME", "")
-    AZURE_AI_PROJECT_ENDPOINT: str = os.getenv("AZURE_AI_PROJECT_ENDPOINT", "")    # Azure Monitor and Application Insights Configuration
+    # Support multiple aliases for AI Foundry endpoint to avoid configuration mismatches
+    _EP_ENV = (
+        os.getenv("AZURE_AI_PROJECT_ENDPOINT")
+        or os.getenv("AZURE_AI_FOUNDRY_ENDPOINT")
+        or os.getenv("AI_FOUNDRY_ENDPOINT")
+        or os.getenv("AZUREAI_PROJECT_ENDPOINT")
+        or os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+        or ""
+    )
+    # Best-effort heuristic: if still empty, try to find any env var that looks like a project endpoint
+    if not _EP_ENV:
+        for _k, _v in os.environ.items():
+            if "PROJECT_ENDPOINT" in _k.upper() and _v.startswith("http"):
+                _EP_ENV = _v
+                break
+    AZURE_AI_PROJECT_ENDPOINT: str = _EP_ENV
+    # Azure Monitor and Application Insights Configuration
     azure_monitor_connection_string: str = os.getenv("AZURE_MONITOR_CONNECTION_STRING", "")
     azure_key_vault_url: str = os.getenv("AZURE_KEY_VAULT_URL", "")
     enable_telemetry: bool = os.getenv("ENABLE_TELEMETRY", "false").lower() == "true"

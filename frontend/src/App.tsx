@@ -4,6 +4,7 @@ import { MessageSquare, BarChart3, HelpCircle, FileText, Building2 } from 'lucid
 import { ChatContainer } from '@/components/chat/ChatContainer';
 import { AdminDashboard } from '@/components/admin/AdminDashboard';
 import KnowledgeBaseManager from '@/components/knowledge-base/KnowledgeBaseManager';
+import SECDocumentsManager from '@/components/sec-documents/SECDocumentsManager';
 import { QAContainer } from '@/components/qa/QAContainer';
 import { ModelConfiguration, ModelSettings } from '@/components/shared/ModelConfiguration';
 import { CitigroupLogo } from '@/components/shared/CitigroupLogo';
@@ -53,7 +54,7 @@ const AppContent = () => {
         <div className="flex h-16 items-center px-4">
           {/* Left: Brand and product name */}
           <div className="flex items-center gap-2">
-            <CitigroupLogo size="md" />
+            <CitigroupLogo size="md" domain={domain} />
             <span className="ml-2 text-xs rounded bg-secondary px-2 py-0.5">
               {role.charAt(0).toUpperCase() + role.slice(1)} Access
             </span>
@@ -169,7 +170,7 @@ const AppContent = () => {
       <main className="flex-1 bg-background">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsContent value="chat" className="m-0 bg-background">
-            <ChatContainer modelSettings={globalModelSettings} />
+            <ChatContainer modelSettings={globalModelSettings} role={role} domain={domain} />
           </TabsContent>
           
           <TabsContent value="qa" className="m-0 bg-background">

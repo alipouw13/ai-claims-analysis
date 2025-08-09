@@ -45,9 +45,11 @@ export interface SessionInfo {
 
 interface ChatContainerProps {
   modelSettings: ModelSettings;
+  role?: 'admin' | 'underwriter' | 'customer';
+  domain?: 'insurance' | 'banking';
 }
 
-export const ChatContainer: React.FC<ChatContainerProps> = ({ modelSettings }) => {
+export const ChatContainer: React.FC<ChatContainerProps> = ({ modelSettings, role = 'admin', domain = 'insurance' }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedCitations, setSelectedCitations] = useState<Citation[]>([]);
@@ -56,12 +58,19 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({ modelSettings }) =
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const didInitialMessagesRender = useRef<boolean>(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
+    // Avoid jumping the page when arriving on the chat view.
+    // Skip auto-scroll for the very first messages render; allow for subsequent sends/replies.
+    if (!didInitialMessagesRender.current) {
+      didInitialMessagesRender.current = true;
+      return;
+    }
     scrollToBottom();
   }, [messages]);
 
@@ -217,11 +226,45 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({ modelSettings }) =
     }
   };
 
+  // Predefined question presets by domain and role (for right-side list)
+  type SampleQuestion = { title: string; subtitle?: string; tags?: string[] };
+  const sampleQuestions: SampleQuestion[] = (() => {
+    if (domain === 'banking') {
+      if (role === 'customer') {
+        return [
+          { title: 'Summarize key risk factors from the latest 10-K', subtitle: 'Document analysis with citations to risk factors', tags: ['risk factors', '10-K'] },
+          { title: 'Compare revenue trends over the last 3 years', subtitle: 'Financial review with section citations', tags: ['trend', 'revenue'] },
+          { title: 'What is management’s latest outlook?', subtitle: 'Forward-looking statements with citations', tags: ['outlook', 'MD&A'] },
+        ];
+      }
+      // underwriter/admin (banking)
+      return [
+        { title: 'Identify material weaknesses or audit concerns', subtitle: 'Cross-filings analysis with sources', tags: ['audit', 'controls'] },
+        { title: 'Extract forward-looking statements and assess sentiment', subtitle: 'MD&A and press sections with citations', tags: ['sentiment', 'MD&A'] },
+        { title: 'Compare liquidity ratios across two fiscal years', subtitle: 'Cite financial statement sections', tags: ['liquidity', 'ratios'] },
+      ];
+    }
+    // insurance domain
+    if (role === 'customer') {
+      return [
+        { title: 'What exclusions apply to my current claim?', subtitle: 'Point to relevant policy sections', tags: ['exclusions', 'claim'] },
+        { title: 'Compare claim details with policy limits and deductibles', subtitle: 'Validate coverage with citations', tags: ['limits', 'deductible'] },
+        { title: 'Which documents are still required to process my claim?', subtitle: 'Checklist referenced from policy requirements', tags: ['documents', 'workflow'] },
+      ];
+    }
+    // underwriter/admin (insurance)
+    return [
+      { title: 'List coverage exclusions relevant to the submitted claim', subtitle: 'Include citations to policy clauses', tags: ['exclusions', 'policy'] },
+      { title: 'Is this claim eligible for auto-approval based on policy terms?', subtitle: 'Provide reasoning and citations', tags: ['auto-approval', 'eligibility'] },
+      { title: 'Provide a risk analysis summary and conflicting evidence', subtitle: 'Surface conflicts across documents', tags: ['risk analysis', 'conflicts'] },
+    ];
+  })();
+
   return (
-    <div className="flex h-screen bg-background">
-      <ResizablePanelGroup direction="horizontal" className="min-h-screen">
+    <div className="flex bg-background">
+      <ResizablePanelGroup direction="horizontal" className="w-full min-h-[60vh]">
         <ResizablePanel defaultSize={75} minSize={50}>
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full border rounded-md bg-card">
             
             <ScrollArea className="flex-1 p-4">
               <MessageList
@@ -259,34 +302,57 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({ modelSettings }) =
           </div>
         </ResizablePanel>
         
-        {(showCitationPanel || showSessionHistory) && (
-          <>
-            <ResizableHandle />
-            <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
-              <div className="flex flex-col h-full space-y-4 p-4">
-                <ChatAgentServiceStatus 
-                  isVisible={showCitationPanel || showSessionHistory}
-                />
-                {showCitationPanel && (
-                  <CitationPanel
-                    citations={selectedCitations}
-                    onClose={() => setShowCitationPanel(false)}
-                  />
-                )}
-                {showSessionHistory && (
-                  <SessionHistory
-                    sessions={sessions}
-                    currentSessionId={currentSessionId}
-                    onSessionSelect={handleSessionSelect}
-                    onNewSession={handleNewSession}
-                    onDeleteSession={handleDeleteSession}
-                    onClose={() => setShowSessionHistory(false)}
-                  />
-                )}
+        {/* Right-side panel for sample questions (plus optional panels) */}
+        <>
+          <ResizableHandle />
+          <ResizablePanel defaultSize={30} minSize={20} maxSize={40}>
+            <div className="flex flex-col h-full p-4 gap-4 border rounded-md bg-card">
+              <div>
+                <div className="text-sm text-muted-foreground mb-2">Sample Questions with Citations</div>
+                <div className="space-y-2">
+                  {sampleQuestions.map((q, i) => (
+                    <div
+                      key={i}
+                      className="border rounded-md p-3 hover:bg-muted cursor-pointer"
+                      onClick={() => handleSendMessage(q.title)}
+                    >
+                      <div className="text-sm font-medium">{q.title}</div>
+                      {q.subtitle && <div className="text-xs text-muted-foreground mt-1">{q.subtitle}</div>}
+                      {q.tags && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {q.tags.map((t) => (
+                            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </ResizablePanel>
-          </>
-        )}
+
+              {(showCitationPanel || showSessionHistory) && (
+                <div className="space-y-4">
+                  <ChatAgentServiceStatus isVisible={true} />
+                  {showCitationPanel && (
+                    <CitationPanel citations={selectedCitations} onClose={() => setShowCitationPanel(false)} />
+                  )}
+                  {showSessionHistory && (
+                    <SessionHistory
+                      sessions={sessions}
+                      currentSessionId={currentSessionId}
+                      onSessionSelect={handleSessionSelect}
+                      onNewSession={handleNewSession}
+                      onDeleteSession={handleDeleteSession}
+                      onClose={() => setShowSessionHistory(false)}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          </ResizablePanel>
+        </>
       </ResizablePanelGroup>
     </div>
   );

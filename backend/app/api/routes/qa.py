@@ -1035,8 +1035,15 @@ async def get_qa_capabilities():
         kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
         
         orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
+        # get_agent_capabilities returns a dict keyed by agent type values
         all_capabilities = orchestrator.get_agent_capabilities()
         capabilities = all_capabilities.get("qa_agent", [])
+        # Normalize capability objects to plain dicts if they are dataclasses
+        try:
+            from dataclasses import asdict, is_dataclass
+            capabilities = [asdict(c) if is_dataclass(c) else c for c in capabilities]
+        except Exception:
+            pass
         
         return {
             "capabilities": capabilities,
