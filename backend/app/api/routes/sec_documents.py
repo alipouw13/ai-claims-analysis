@@ -788,12 +788,20 @@ async def get_sec_document_library(
         filtered_documents = all_documents
         
         if company:
-            # Filter by company name (case-insensitive partial match)
+            # Filter by company name (case-insensitive partial match) and try to resolve to ticker
             company_lower = company.lower()
+            # Attempt to resolve provided text to canonical ticker for better matching (e.g., 'MSFT', 'PNC')
+            try:
+                resolved = sec_service._resolve_ticker_and_company(company)
+                resolved_ticker = resolved[0] if resolved else None
+            except Exception:
+                resolved_ticker = None
+
             filtered_documents = [
                 doc for doc in filtered_documents 
                 if company_lower in doc.get("company", "").lower() or 
-                   company_lower in doc.get("ticker", "").lower()
+                   company_lower in doc.get("ticker", "").lower() or 
+                   (resolved_ticker and doc.get("ticker", "").upper() == resolved_ticker.upper())
             ]
             logger.info(f"After company filter '{company}': {len(filtered_documents)} documents")
         

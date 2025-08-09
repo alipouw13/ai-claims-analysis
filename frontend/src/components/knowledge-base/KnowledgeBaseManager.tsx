@@ -18,9 +18,10 @@ import { KnowledgeBaseAgentServiceStatus } from './KnowledgeBaseAgentServiceStat
 
 interface KnowledgeBaseManagerProps {
   modelSettings: ModelSettings;
+  role: 'admin' | 'underwriter' | 'customer';
 }
 
-const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettings }) => {
+const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettings, role }) => {
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [conflicts, setConflicts] = useState<ConflictInfo[]>([]);
   const [metrics, setMetrics] = useState<KnowledgeBaseMetrics | null>(null);
@@ -34,7 +35,7 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [searchText, setSearchText] = useState<string>('');
-  const [indexFilter, setIndexFilter] = useState<string>('all');
+  const [indexFilter, setIndexFilter] = useState<string>(role === 'customer' ? 'claims' : 'policy');
   const [previewOpen, setPreviewOpen] = useState<boolean>(false);
   const [previewDoc, setPreviewDoc] = useState<{ id: string; index: 'policy' | 'claims' } | null>(null);
   const [previewChunks, setPreviewChunks] = useState<any[]>([]);
@@ -93,7 +94,8 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
         temperature: modelSettings.temperature,
         document_type: undefined,
         company_name: undefined,
-        filing_date: undefined
+        filing_date: undefined,
+        is_claim: role === 'customer'
       });
 
       console.log('Upload successful:', uploadResponse);
@@ -189,8 +191,12 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Documents</h1>
-          <p className="text-muted-foreground text-sm">Upload policy documents, applications, or claims for AI analysis</p>
+          <h1 className="text-2xl font-semibold">{role === 'customer' ? 'Claims Documents' : 'Policy Documents'} Management</h1>
+          <p className="text-muted-foreground text-sm">
+            {role === 'customer'
+              ? 'Upload and manage claim documents for AI analysis'
+              : 'Upload and manage policy documents and applications for AI analysis'}
+          </p>
         </div>
         <Button onClick={loadData} variant="outline" disabled={loading}>
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -207,7 +213,7 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="upload">Upload Documents</TabsTrigger>
+          <TabsTrigger value="upload">{role === 'customer' ? 'Upload Claims' : 'Upload Policies'}</TabsTrigger>
           <TabsTrigger value="documents">Document Library</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="chunking">Chunk Visualization</TabsTrigger>
@@ -229,13 +235,13 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Upload className="h-4 w-4" />
-                Upload Policy Documents
+                {role === 'customer' ? 'Upload Claim Documents' : 'Upload Policy Documents'}
               </CardTitle>
               <CardDescription className="text-xs">Drag and drop files here, or click to browse. Supports PDF, DOC, DOCX files up to 10MB.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid w-full max-w-sm items-center gap-1.5">
-                <Label htmlFor="documents">Select Documents</Label>
+                <Label htmlFor="documents">Select {role === 'customer' ? 'Claim' : 'Policy'} Documents</Label>
                 <Input
                   id="documents"
                   type="file"

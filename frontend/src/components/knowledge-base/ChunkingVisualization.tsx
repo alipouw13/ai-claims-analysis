@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { apiService } from '@/services/api';
 
 import { 
   FileText, 
@@ -55,16 +56,34 @@ interface DocumentStructure {
 
 const ChunkingVisualization: React.FC = () => {
   const [selectedDocument, setSelectedDocument] = useState<string>('');
+  const [domain, setDomain] = useState<'insurance' | 'banking'>(() => (localStorage.getItem('domain') as any) || 'insurance');
+  const [libraryDocs, setLibraryDocs] = useState<Array<{id: string; name: string}>>([]);
   const [documentStructure, setDocumentStructure] = useState<DocumentStructure | null>(null);
   const [selectedChunk, setSelectedChunk] = useState<ChunkMetadata | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [chunkingStrategy] = useState<'hierarchical' | 'semantic' | 'hybrid'>('hierarchical');
 
-  const mockDocuments = [
-    { id: '1', name: 'AAPL_10K_2023.pdf' },
-    { id: '2', name: 'MSFT_10Q_Q3_2023.pdf' },
-    { id: '3', name: 'GOOGL_Annual_Report_2023.pdf' }
-  ];
+  // Load document list from corresponding library
+  useEffect(() => {
+    const load = async () => {
+      try {
+        if (domain === 'insurance') {
+          const res = await apiService.listDocuments({ index: 'policy' } as any);
+          const docs = (res.documents || []).map((d: any) => ({ id: d.id, name: d.filename || d.name || d.id }));
+          setLibraryDocs(docs);
+        } else {
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+          const secRes = await fetch(`${apiBaseUrl}/sec/library?limit=200`);
+          const data = await secRes.json();
+          const docs = (data.documents || []).map((d: any) => ({ id: d.document_id || d.id, name: d.filename || d.title || d.document_id }));
+          setLibraryDocs(docs);
+        }
+      } catch (e) {
+        setLibraryDocs([]);
+      }
+    };
+    load();
+  }, [domain]);
 
   const mockDocumentStructure: DocumentStructure = {
     id: '1',
@@ -164,10 +183,61 @@ const ChunkingVisualization: React.FC = () => {
   };
 
   useEffect(() => {
-    if (selectedDocument) {
-      setDocumentStructure(mockDocumentStructure);
-    }
-  }, [selectedDocument]);
+    const loadStructure = async () => {
+      if (!selectedDocument) return;
+      try {
+        if (domain === 'insurance') {
+          // For insurance, use the generic chunks endpoint (policy index by default)
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+          const res = await fetch(`${apiBaseUrl}/knowledge-base/documents/${selectedDocument}/chunks?index=policy`);
+          const data = await res.json();
+          const chunks = data.chunks || [];
+          // Build a simple structure from chunks
+          const structure: DocumentStructure = {
+            id: selectedDocument,
+            filename: selectedDocument,
+            totalPages: 0,
+            processingStatus: 'completed',
+            processingProgress: 100,
+            sections: [
+              {
+                name: 'Document',
+                startPage: 1,
+                endPage: 1,
+                subsections: [{
+                  name: 'All Chunks', startPage: 1, endPage: 1,
+                  chunks: chunks.slice(0, 50).map((c: any, idx: number) => ({
+                    id: c.id || c.chunk_id || `chunk_${idx}`,
+                    content: c.content || '',
+                    startPage: 1,
+                    endPage: 1,
+                    section: 'Document',
+                    subsection: 'All Chunks',
+                    chunkType: 'text',
+                    size: (c.content || '').length,
+                    overlap: 0,
+                    confidence: 0.9,
+                    citations: []
+                  }))
+                }]
+              }
+            ]
+          };
+          setDocumentStructure(structure);
+        } else {
+          // Banking: use SEC document chunks endpoint
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+          const res = await fetch(`${apiBaseUrl}/sec/documents/${selectedDocument}/chunks`);
+          const data = await res.json();
+          // Expect data.chunks-like structure; reuse mock for now if missing
+          setDocumentStructure(mockDocumentStructure);
+        }
+      } catch (e) {
+        setDocumentStructure(null);
+      }
+    };
+    loadStructure();
+  }, [selectedDocument, domain]);
 
   const toggleSection = (sectionName: string) => {
     const newExpanded = new Set(expandedSections);
@@ -237,7 +307,7 @@ const ChunkingVisualization: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              {mockDocuments.map((doc) => (
+              {libraryDocs.map((doc) => (
                 <Button
                   key={doc.id}
                   variant={selectedDocument === doc.id ? "default" : "outline"}

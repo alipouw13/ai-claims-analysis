@@ -12,12 +12,14 @@ import './App.css';
 import ClaimsSummary from '@/components/customer/ClaimsSummary';
 import SubmitClaim from '@/components/customer/SubmitClaim';
 import AskClaims from '@/components/customer/AskClaims';
+// (already imported above)
 
 type Role = 'admin' | 'underwriter' | 'customer';
 
 const AppContent = () => {
   const [activeTab, setActiveTab] = useState('documents');
   const [role, setRole] = useState<Role>('admin');
+  const [domain, setDomain] = useState<'insurance' | 'banking'>((localStorage.getItem('domain') as any) || 'insurance');
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [globalModelSettings, setGlobalModelSettings] = useState<ModelSettings>({
     selectedModel: 'gpt-4',
@@ -34,7 +36,11 @@ const AppContent = () => {
   };
 
   const visibleTabs = (
-    role === 'customer' ? ['claims', 'submit', 'ask'] : ['chat', 'qa', 'documents', 'admin']
+    role === 'customer'
+      ? ['claims', 'submit', 'ask']
+      : domain === 'banking'
+        ? ['chat', 'qa', 'sec-docs', 'admin']
+        : ['chat', 'qa', 'documents', 'admin']
   );
 
   return (
@@ -55,8 +61,24 @@ const AppContent = () => {
 
           {/* Center nav removed per request */}
 
-          {/* Right: Persona segmented control */}
-          <div className="ml-auto flex items-center gap-2">
+          {/* Right: Domain + Persona segmented controls */}
+          <div className="ml-auto flex items-center gap-4">
+            {/* Domain toggle */}
+            <div className="inline-flex rounded-md border p-0.5 bg-background">
+              {(['insurance','banking'] as const).map(d => (
+                <button
+                  key={d}
+                  className={`px-3 py-1 text-xs rounded-sm ${domain===d ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted'}`}
+                  onClick={() => {
+                    setDomain(d);
+                    localStorage.setItem('domain', d);
+                    if (role !== 'customer') setActiveTab(d==='banking' ? 'sec-docs' : 'documents');
+                  }}
+                >
+                  {d.charAt(0).toUpperCase()+d.slice(1)}
+                </button>
+              ))}
+            </div>
             <div className="inline-flex rounded-md border p-0.5 bg-background">
               {(['admin','underwriter','customer'] as Role[]).map(r => (
                 <button
@@ -65,7 +87,7 @@ const AppContent = () => {
                   onClick={() => {
                     setRole(r);
                     setTheme(r==='customer' ? 'customer' : 'light');
-                    setActiveTab(r==='customer' ? 'claims' : 'documents');
+                    setActiveTab(r==='customer' ? 'claims' : (domain==='banking' ? 'sec-docs' : 'documents'));
                   }}
                 >
                   {r.charAt(0).toUpperCase()+r.slice(1)}
@@ -95,6 +117,12 @@ const AppContent = () => {
                   <TabsTrigger value="documents" className="flex items-center gap-2">
                     <FileText className="h-4 w-4" />
                     Documents
+                  </TabsTrigger>
+                )}
+                {visibleTabs.includes('sec-docs') && (
+                  <TabsTrigger value="sec-docs" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    SEC Docs
                   </TabsTrigger>
                 )}
                 {visibleTabs.includes('admin') && (
@@ -149,7 +177,10 @@ const AppContent = () => {
           </TabsContent>
           
           <TabsContent value="documents" className="m-0 bg-background">
-            <KnowledgeBaseManager modelSettings={globalModelSettings} />
+            <KnowledgeBaseManager modelSettings={globalModelSettings} role={role} />
+          </TabsContent>
+          <TabsContent value="sec-docs" className="m-0 bg-background">
+            <SECDocumentsManager />
           </TabsContent>
           
           

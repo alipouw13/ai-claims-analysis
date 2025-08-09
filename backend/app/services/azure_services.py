@@ -18,6 +18,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 import time
+import httpx
 
 # Configure Windows event loop policy for Azure SDK compatibility
 if platform.system() == "Windows":
@@ -951,7 +952,7 @@ class AzureServiceManager:
                 return self._get_mock_models()
             
             connections = await self._get_project_connections_internal()
-            models = []
+            models: List[Dict[str, Any]] = []
             
             for connection in connections:
                 if connection.get("connection_type") == ConnectionType.AZURE_OPEN_AI or connection.get("type") == "azure_openai":
@@ -961,9 +962,16 @@ class AzureServiceManager:
                     except Exception as e:
                         logger.error(f"Failed to get models from connection {connection.get('name')}: {e}")
             
+            # Merge deployments from direct Azure OpenAI inference endpoint if configured
+            try:
+                aoai_models = await self._list_aoai_deployments_via_inference()
+                if aoai_models:
+                    models.extend(aoai_models)
+            except Exception as e:
+                logger.warning(f"Could not list AOAI deployments via inference endpoint: {e}")
+
             if not models:
-                logger.warning("No models found from project connections, using direct Azure OpenAI configuration")
-                # Fallback to using direct Azure OpenAI configuration
+                logger.warning("No models found from connections or AOAI endpoint, using direct Azure OpenAI configuration")
                 models = await self._get_models_from_direct_config()
             
             # Remove duplicates based on deployment name/id
@@ -1024,43 +1032,19 @@ class AzureServiceManager:
         try:
             connection_name = connection.get("name", "unknown")
             endpoint = connection.get("endpoint", "")
-            
-            return [
-                {
-                    "id": f"gpt-4-{connection_name}",
-                    "name": "GPT-4",
-                    "type": "chat",
-                    "version": "0613",
-                    "status": "active",
-                    "provider": "Azure OpenAI",
-                    "connection": connection_name,
-                    "endpoint": endpoint,
-                    "capabilities": ["chat", "completion"]
-                },
-                {
-                    "id": f"gpt-35-turbo-{connection_name}",
-                    "name": "GPT-3.5 Turbo",
-                    "type": "chat",
-                    "version": "0613",
-                    "status": "active",
-                    "provider": "Azure OpenAI",
-                    "connection": connection_name,
-                    "endpoint": endpoint,
-                    "capabilities": ["chat", "completion"]
-                },
-                {
-                    "id": f"text-embedding-ada-002-{connection_name}",
-                    "name": "Text Embedding Ada 002",
-                    "type": "embedding",
-                    "version": "2",
-                    "status": "active",
-                    "provider": "Azure OpenAI",
-                    "connection": connection_name,
-                    "endpoint": endpoint,
-                    "capabilities": ["embeddings"],
-                    "dimensions": 1536
-                }
-            ]
+
+            # Try to enumerate deployments from this connection's endpoint
+            deployments: List[Dict[str, Any]] = []
+            try:
+                direct = await self._list_aoai_deployments_via_inference(endpoint_override=endpoint)
+                for m in direct:
+                    m["connection"] = connection_name
+                    m["endpoint"] = endpoint
+                deployments.extend(direct)
+            except Exception as e:
+                logger.debug(f"Connection {connection_name} inference listing failed: {e}")
+
+            return deployments
         except Exception as e:
             logger.error(f"Error getting models from connection {connection.get('name')}: {e}")
             return []
@@ -1215,37 +1199,39 @@ class AzureServiceManager:
         except Exception as e:
             logger.warning(f"Failed to fetch models from Management API: {e}, falling back to direct config")
         
-        # Fallback to direct configuration if Management API fails
+        # Fallback to direct configuration if Management API fails. Try inference API first
         if settings.AZURE_OPENAI_ENDPOINT and settings.AZURE_OPENAI_API_KEY:
-            logger.info("Using direct Azure OpenAI configuration as fallback")
-            
-            # Add the configured chat model
-            if settings.AZURE_OPENAI_DEPLOYMENT_NAME:
-                models.append({
-                    "id": settings.AZURE_OPENAI_DEPLOYMENT_NAME,
-                    "name": settings.AZURE_OPENAI_DEPLOYMENT_NAME,
-                    "deployment_name": settings.AZURE_OPENAI_DEPLOYMENT_NAME,
-                    "model_name": "Unknown",  # We don't know the actual model name in fallback
-                    "type": "chat",
-                    "status": "active",
-                    "provider": "Azure OpenAI (Direct Config Fallback)",
-                    "capabilities": ["chat", "completion"],
-                    "endpoint": settings.AZURE_OPENAI_ENDPOINT
-                })
-            
-            # Add the configured embedding model
-            if settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME:
-                models.append({
-                    "id": settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME,
-                    "name": settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME,
-                    "deployment_name": settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME,
-                    "model_name": "Unknown",  # We don't know the actual model name in fallback
-                    "type": "embedding",
-                    "status": "active",
-                    "provider": "Azure OpenAI (Direct Config Fallback)",
-                    "capabilities": ["embedding"],
-                    "endpoint": settings.AZURE_OPENAI_ENDPOINT
-                })
+            logger.info("Using AOAI inference endpoint to list deployments as fallback")
+            try:
+                direct = await self._list_aoai_deployments_via_inference()
+                models.extend(direct)
+            except Exception as e:
+                logger.warning(f"Inference listing failed, falling back to configured names: {e}")
+                # Last resort: include configured deployment names
+                if settings.AZURE_OPENAI_DEPLOYMENT_NAME:
+                    models.append({
+                        "id": settings.AZURE_OPENAI_DEPLOYMENT_NAME,
+                        "name": settings.AZURE_OPENAI_DEPLOYMENT_NAME,
+                        "deployment_name": settings.AZURE_OPENAI_DEPLOYMENT_NAME,
+                        "model_name": "Unknown",
+                        "type": "chat",
+                        "status": "active",
+                        "provider": "Azure OpenAI (Direct Config Fallback)",
+                        "capabilities": ["chat"],
+                        "endpoint": settings.AZURE_OPENAI_ENDPOINT
+                    })
+                if settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME:
+                    models.append({
+                        "id": settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME,
+                        "name": settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME,
+                        "deployment_name": settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME,
+                        "model_name": "Unknown",
+                        "type": "embedding",
+                        "status": "active",
+                        "provider": "Azure OpenAI (Direct Config Fallback)",
+                        "capabilities": ["embedding"],
+                        "endpoint": settings.AZURE_OPENAI_ENDPOINT
+                    })
         
         if not models:
             logger.warning("No Azure OpenAI configuration found, returning mock models")
@@ -1253,6 +1239,54 @@ class AzureServiceManager:
             
         logger.info(f"Found {len(models)} models from direct Azure OpenAI configuration")
         return models
+
+    async def _list_aoai_deployments_via_inference(self, endpoint_override: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List deployments from Azure OpenAI inference endpoint and normalize to unified schema."""
+        endpoint = (endpoint_override or settings.AZURE_OPENAI_ENDPOINT or "").rstrip('/')
+        if not endpoint or not settings.AZURE_OPENAI_API_KEY:
+            return []
+        api_version = settings.AZURE_OPENAI_API_VERSION or "2024-02-15-preview"
+        url = f"{endpoint}/openai/deployments?api-version={api_version}"
+        headers = {"api-key": settings.AZURE_OPENAI_API_KEY}
+        deployments: List[Dict[str, Any]] = []
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get("data") or data.get("value") or []
+            for d in items:
+                dep_name = d.get("id") or d.get("name") or d.get("deployment_name")
+                model_name = (d.get("model") or d.get("model_name") or "").lower()
+                mtype = self._classify_model_type(model_name)
+                entry: Dict[str, Any] = {
+                    "id": dep_name,
+                    "name": dep_name,
+                    "deployment_name": dep_name,
+                    "model_name": model_name,
+                    "type": mtype,
+                    "status": d.get("status") or "active",
+                    "provider": "Azure OpenAI",
+                    "capabilities": ["embeddings"] if mtype == "embedding" else ["chat"],
+                    "endpoint": endpoint,
+                }
+                if mtype == "embedding":
+                    entry["dimensions"] = self._infer_embedding_dimensions(model_name)
+                deployments.append(entry)
+        return deployments
+
+    def _classify_model_type(self, model_name: str) -> str:
+        mn = (model_name or "").lower()
+        if "embedding" in mn or mn.startswith("text-embedding"):
+            return "embedding"
+        return "chat"
+
+    def _infer_embedding_dimensions(self, model_name: str) -> int:
+        mn = (model_name or "").lower()
+        if "text-embedding-3-large" in mn:
+            return 3072
+        if "text-embedding-3-small" in mn or "text-embedding-ada-002" in mn:
+            return 1536
+        return 1536
 
     async def recreate_search_index(self, force: bool = False) -> bool:
         """

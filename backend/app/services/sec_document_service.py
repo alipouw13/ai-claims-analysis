@@ -47,95 +47,112 @@ class SECDocumentService:
             chunk_size=settings.chunk_size
         )
         
-    async def search_companies(self, query: str) -> List[Dict[str, Any]]:
+        # Static fallback map for resolving company names and common variants to tickers
+        # Keys MUST be lowercase; values are canonical tickers
+        self._common_company_mappings: Dict[str, str] = {
+            # Tech
+            "apple": "AAPL", "apple inc": "AAPL", "apple computer": "AAPL", "aapl": "AAPL",
+            "microsoft": "MSFT", "microsoft corp": "MSFT", "microsoft corporation": "MSFT", "msft": "MSFT",
+            "google": "GOOGL", "alphabet": "GOOGL", "alphabet inc": "GOOGL", "alphabet class a": "GOOGL", "googl": "GOOGL", "goog": "GOOG",
+            "meta": "META", "meta platforms": "META", "facebook": "META", "meta platforms inc": "META", "meta platforms, inc": "META", "meta platforms inc.": "META",
+            "amazon": "AMZN", "amazon.com": "AMZN", "amazon com": "AMZN", "amzn": "AMZN",
+            "nvidia": "NVDA", "nvidia corp": "NVDA", "nvidia corporation": "NVDA", "nvda": "NVDA",
+            "netflix": "NFLX", "nflx": "NFLX",
+            "adobe": "ADBE", "adobe inc": "ADBE", "adobe systems": "ADBE", "adbe": "ADBE",
+            "oracle": "ORCL", "oracle corp": "ORCL", "oracle corporation": "ORCL", "orcl": "ORCL",
+            "salesforce": "CRM", "salesforce.com": "CRM", "crm": "CRM",
+            "intel": "INTC", "intel corp": "INTC", "intel corporation": "INTC", "intc": "INTC",
+
+            # Large banks and financials
+            "jpmorgan": "JPM", "jp morgan": "JPM", "jpmorgan chase": "JPM", "jpmorgan chase & co": "JPM", "jpm": "JPM",
+            "bank of america": "BAC", "bofa": "BAC", "bac": "BAC",
+            "citigroup": "C", "citi": "C", "citigroup inc": "C", "c": "C",
+            "wells fargo": "WFC", "wells fargo & company": "WFC", "wfc": "WFC",
+            "goldman sachs": "GS", "the goldman sachs group": "GS", "gs": "GS",
+            "morgan stanley": "MS", "ms": "MS",
+            "pnc": "PNC", "pnc bank": "PNC", "pnc financial": "PNC", "pnc financial services": "PNC", "pnc financial services group": "PNC", "the pnc financial services group": "PNC",
+            "u.s. bancorp": "USB", "us bancorp": "USB", "usb": "USB",
+            "truist": "TFC", "truist financial": "TFC", "tfc": "TFC",
+            "charles schwab": "SCHW", "schwab": "SCHW", "schw": "SCHW",
+
+            # Insurance (common in policy datasets)
+            "progressive": "PGR", "allstate": "ALL", "geico": "BRK.B", "berkshire hathaway": "BRK.B", "brk.b": "BRK.B", "brk b": "BRK.B",
+
+            # Retail/others
+            "tesla": "TSLA", "tsla": "TSLA",
+            "costco": "COST", "costco wholesale": "COST", "cost": "COST",
+            "walmart": "WMT", "wal-mart": "WMT", "wmt": "WMT",
+        }
+
+    def _normalize_mapping_key(self, text: str) -> str:
+        key = (text or "").lower().strip()
+        # Light normalization to improve matches
+        key = key.replace(",", "").replace(".", "")
+        key = key.replace("incorporated", "").replace("inc", "").replace("company", "").replace("co", "")
+        key = " ".join(key.split())
+        return key
+
+    def _resolve_ticker_and_company(self, query: str) -> Optional[Tuple[str, Company]]:
+        """Best-effort resolution from user query to (ticker, Company).
+        Handles raw tickers, edgar.find_company, and a rich fallback map (incl. MSFT/PNC).
         """
-        Search for companies by name or ticker and include available filings summary
+        import re as _re
+        q = (query or "").strip()
+        if not q:
+            return None
+
+        # If it looks like a ticker (1-6 letters/dots) try directly
+        if _re.fullmatch(r"[A-Za-z\.]{1,6}", q):
+            ticker = q.upper()
+            try:
+                company = Company(ticker)
+                return ticker, company
+            except Exception as e:
+                logger.debug(f"Direct ticker '{ticker}' failed: {e}")
+
+        # Try edgar.find_company for names or tickers
+        try:
+            from edgar import find_company
+            search_results = find_company(q)
+            if search_results and len(search_results) > 0:
+                company = search_results[0]
+                # Extract ticker
+                ticker = None
+                try:
+                    ticker = company.get_ticker()
+                except Exception:
+                    tickers = getattr(company, 'tickers', None)
+                    if tickers:
+                        ticker = tickers[0]
+                if ticker:
+                    return ticker, company
+        except Exception as e:
+            logger.debug(f"find_company failed for '{q}': {e}")
+
+        # Fallback to our mappings (supports both tickers and names)
+        key = self._normalize_mapping_key(q)
+        mapped = self._common_company_mappings.get(key)
+        if mapped:
+            try:
+                return mapped, Company(mapped)
+            except Exception as e:
+                logger.debug(f"Fallback mapping found '{mapped}' but Company() failed: {e}")
+
+        return None
+        
+    async def search_companies(self, query: str) -> List[Dict[str, Any]]:
+        """Search for companies by name or ticker and include available filings summary.
+        Uses robust ticker resolution with fallbacks for MSFT/PNC and others.
         """
         try:
             logger.info(f"Searching for companies with query: {query}")
-            
-            # Always use find_company first to get the proper ticker, regardless of input
-            try:
-                from edgar import find_company
-                
-                logger.info(f"Using find_company to search for: {query}")
-                search_results = find_company(query)
-                
-                if search_results and len(search_results) > 0:
-                    # Get the best match (Company object)
-                    company = search_results[0]
-                    
-                    # Extract ticker from the Company object
-                    ticker = company.get_ticker()
-                    
-                    if ticker:
-                        logger.info(f"Found ticker via find_company: {query} -> {ticker}")
-                        # Use the Company object we already have to get info
-                        return await self._get_company_info(company, ticker)
-                    else:
-                        logger.warning(f"Found company but no ticker: {company.name}")
-                        
-            except Exception as search_error:
-                logger.warning(f"find_company failed for '{query}': {search_error}")
-                  # Fallback to hardcoded mappings for well-known companies
-            logger.info(f"Trying fallback mapping for: {query}")
-            name_to_ticker = {
-                'apple': 'AAPL',
-                'aaple': 'AAPL',  # Common typo
-                'apple inc': 'AAPL', 
-                'apple computer': 'AAPL',
-                'apple inc.': 'AAPL',
-                'microsoft': 'MSFT',
-                'microsoft corp': 'MSFT',
-                'microsoft corporation': 'MSFT',
-                'amazon': 'AMZN',
-                'amazon.com': 'AMZN',
-                'amazon inc': 'AMZN',
-                'amazon.com inc': 'AMZN',
-                'google': 'GOOGL',
-                'alphabet': 'GOOGL',
-                'alphabet inc': 'GOOGL',
-                'alphabet inc.': 'GOOGL',
-                'tesla': 'TSLA',
-                'tesla inc': 'TSLA',
-                'tesla motors': 'TSLA',
-                'tesla inc.': 'TSLA',
-                'facebook': 'META',
-                'meta': 'META',
-                'meta platforms': 'META',
-                'meta platforms inc': 'META',
-                'nvidia': 'NVDA',
-                'nvidia corp': 'NVDA',
-                'nvidia corporation': 'NVDA',
-                'netflix': 'NFLX',
-                'oracle': 'ORCL',
-                'oracle corp': 'ORCL',
-                'oracle corporation': 'ORCL',
-                'salesforce': 'CRM',
-                'salesforce.com': 'CRM',
-                'adobe': 'ADBE',
-                'adobe inc': 'ADBE',
-                'adobe systems': 'ADBE',
-                'intel': 'INTC',
-                'intel corp': 'INTC',
-                'intel corporation': 'INTC',
-                'ibm': 'IBM',
-                'international business machines': 'IBM',
-                'cisco': 'CSCO',
-                'cisco systems': 'CSCO',
-                'paypal': 'PYPL',
-                'paypal holdings': 'PYPL'
-            }
-            
-            query_lower = query.lower().strip()
-            if query_lower in name_to_ticker:
-                logger.info(f"Found fallback mapping: {query} -> {name_to_ticker[query_lower]}")
-                company = Company(name_to_ticker[query_lower])
-                return await self._get_company_info(company, name_to_ticker[query_lower])
-            
+            resolved = self._resolve_ticker_and_company(query)
+            if resolved:
+                ticker, company = resolved
+                logger.info(f"Resolved '{query}' -> ticker '{ticker}' via unified resolver")
+                return await self._get_company_info(company, ticker)
             logger.warning(f"Company not found for query: {query}")
             return []
-                
         except Exception as e:
             logger.error(f"Error searching companies: {e}")
             return []
@@ -301,17 +318,20 @@ class SECDocumentService:
         """
         try:
             logger.info(f"Getting filings for {ticker}, forms: {form_types}")
-            
             if form_types is None:
                 form_types = ['10-K', '10-Q', '8-K']
-            
-            company = Company(ticker.upper())
+            # Resolve to canonical ticker and Company
+            resolved = self._resolve_ticker_and_company(ticker)
+            if not resolved:
+                logger.warning(f"Could not resolve ticker/company for '{ticker}'")
+                return []
+            actual_ticker, company = resolved
             filings = company.get_filings(form=form_types).head(limit)
             
             documents = []
             for filing in filings:
                 doc_info = SECDocumentInfo(
-                    ticker=ticker.upper(),
+                    ticker=actual_ticker,
                     company_name=company.name,
                     cik=str(company.cik),
                     form_type=filing.form,
@@ -322,7 +342,7 @@ class SECDocumentService:
                     file_size=getattr(filing, 'size', None)                )
                 documents.append(doc_info)
             
-            logger.info(f"Found {len(documents)} filings for {ticker}")
+            logger.info(f"Found {len(documents)} filings for {actual_ticker}")
             return documents            
         except Exception as e:
             logger.error(f"Error getting filings for {ticker}: {e}")
@@ -914,20 +934,16 @@ class SECDocumentService:
         try:
             logger.info(f"Getting specific filings for {ticker}, forms: {form_types}, years: {years}")
             
-            # First try to find the company (handles name-to-ticker mapping)
-            companies = await self.search_companies(ticker)
-            if not companies:
+            # Resolve to canonical ticker and Company (robust to names like MSFT/PNC)
+            resolved = self._resolve_ticker_and_company(ticker)
+            if not resolved:
                 logger.warning(f"No company found for query: {ticker}")
                 return []
-            
-            # Use the first company's ticker
-            actual_ticker = companies[0]['ticker']
+            actual_ticker, company = resolved
             logger.info(f"Using ticker: {actual_ticker} for query: {ticker}")
             
             if form_types is None:
                 form_types = ['10-K', '10-Q', '8-K']
-            
-            company = Company(actual_ticker)
             
             # Get more filings if we need to filter by years
             fetch_limit = limit * 3 if years else limit
