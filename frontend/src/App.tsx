@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MessageSquare, BarChart3, HelpCircle, FileText, Building2 } from 'lucide-react';
+import { MessageSquare, BarChart3, HelpCircle, FileText, Building2, LayoutDashboard } from 'lucide-react';
 import { ChatContainer } from '@/components/chat/ChatContainer';
 import { AdminDashboard } from '@/components/admin/AdminDashboard';
 import KnowledgeBaseManager from '@/components/knowledge-base/KnowledgeBaseManager';
 import SECDocumentsManager from '@/components/sec-documents/SECDocumentsManager';
+import InsuranceDashboard from '@/components/dashboard/InsuranceDashboard';
+import BankingDashboard from '@/components/dashboard/BankingDashboard';
 import { QAContainer } from '@/components/qa/QAContainer';
 import { ModelConfiguration, ModelSettings } from '@/components/shared/ModelConfiguration';
 import { CitigroupLogo } from '@/components/shared/CitigroupLogo';
@@ -15,7 +17,7 @@ import SubmitClaim from '@/components/customer/SubmitClaim';
 import AskClaims from '@/components/customer/AskClaims';
 // (already imported above)
 
-type Role = 'admin' | 'underwriter' | 'customer';
+type Role = 'admin' | 'underwriter' | 'customer' | 'analyst';
 
 const AppContent = () => {
   const [activeTab, setActiveTab] = useState('documents');
@@ -38,10 +40,10 @@ const AppContent = () => {
 
   const visibleTabs = (
     role === 'customer'
-      ? ['claims', 'submit', 'ask']
+      ? ['dashboard', 'claims', 'submit', 'ask']
       : domain === 'banking'
-        ? ['chat', 'qa', 'sec-docs', 'admin']
-        : ['chat', 'qa', 'documents', 'admin']
+        ? ['dashboard', 'chat', 'qa', 'sec-docs', 'admin']
+        : ['dashboard', 'chat', 'qa', 'documents', 'admin']
   );
 
   return (
@@ -81,14 +83,14 @@ const AppContent = () => {
               ))}
             </div>
             <div className="inline-flex rounded-md border p-0.5 bg-background">
-              {(['admin','underwriter','customer'] as Role[]).map(r => (
+              {(domain==='banking' ? (['admin','analyst','customer'] as Role[]) : (['admin','underwriter','customer'] as Role[])).map(r => (
                 <button
                   key={r}
                   className={`px-3 py-1 text-xs rounded-sm ${role===r ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted'}`}
                   onClick={() => {
                     setRole(r);
                     setTheme(r==='customer' ? 'customer' : 'light');
-                    setActiveTab(r==='customer' ? 'claims' : (domain==='banking' ? 'sec-docs' : 'documents'));
+                    setActiveTab(r==='customer' ? 'claims' : 'dashboard');
                   }}
                 >
                   {r.charAt(0).toUpperCase()+r.slice(1)}
@@ -101,7 +103,13 @@ const AppContent = () => {
         {/* Below header: main nav tabs similar to previous layout for desktop */}
         <div className="flex items-center px-4 pb-2">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
+              <TabsList className="grid w-full grid-cols-6">
+                {visibleTabs.includes('dashboard') && (
+                  <TabsTrigger value="dashboard" className="flex items-center gap-2">
+                    <LayoutDashboard className="h-4 w-4" />
+                    Dashboard
+                  </TabsTrigger>
+                )}
                 {visibleTabs.includes('chat') && (
                   <TabsTrigger value="chat" className="flex items-center gap-2">
                     <MessageSquare className="h-4 w-4" />
@@ -169,6 +177,9 @@ const AppContent = () => {
 
       <main className="flex-1 bg-background">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsContent value="dashboard" className="m-0 bg-background">
+            {domain==='banking' ? <BankingDashboard /> : <InsuranceDashboard />}
+          </TabsContent>
           <TabsContent value="chat" className="m-0 bg-background">
             <ChatContainer modelSettings={globalModelSettings} role={role} domain={domain} />
           </TabsContent>
