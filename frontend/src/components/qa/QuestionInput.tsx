@@ -33,10 +33,10 @@ export const QuestionInput: React.FC<QuestionInputProps> = ({ onAskQuestion, dis
   };
 
   const exampleQuestions = [
-    "What are the key financial risks mentioned in Apple's latest 10-K filing?",
-    "Compare and Contrast the Risk factors between Apple and Microsoft for 2023",
-    "How has Microsoft's revenue growth compared to industry benchmarks over the past 3 years?",
-    "What regulatory compliance issues are affecting the banking sector according to recent reports?"
+    'What exclusions apply to the submitted claim and which sections support them?',
+    'Is this claim eligible for auto-approval based on policy terms? Provide reasoning.',
+    'Compare policy limits and deductibles with the claimed loss; cite the clauses.',
+    'Which documents are missing to complete this claim and where is this stated?'
   ];
 
   const getVerificationDescription = (level: string) => {
@@ -113,14 +113,14 @@ export const QuestionInput: React.FC<QuestionInputProps> = ({ onAskQuestion, dis
 
       <div className="space-y-2">
         <label htmlFor="question" className="text-sm font-medium text-foreground">
-          Financial Question
+          Policy and Claims Questions
         </label>
         <Textarea
           id="question"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask a complex financial question that requires analysis and source verification..."
+          placeholder="Ask a policy or claims question that requires analysis and source verification..."
           className="min-h-[100px] resize-none"
           disabled={disabled}
         />

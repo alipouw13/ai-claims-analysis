@@ -31,6 +31,7 @@ from app.services.evaluation_service import evaluation_service
 from app.services.mcp_client import mcp_service
 
 router = APIRouter()
+ins_router = APIRouter(prefix="/insurance")
 logger = logging.getLogger(__name__)
 
 @router.post("/ask", response_model=QAResponse)
@@ -1059,6 +1060,30 @@ async def get_qa_capabilities():
     except Exception as e:
         logger.error(f"Error getting QA capabilities: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve QA capabilities")
+
+@ins_router.get("/capabilities")
+async def get_insurance_qa_capabilities():
+    """Capabilities for Insurance QA (same structure, focused for UI wiring)."""
+    return await get_qa_capabilities()
+
+# --- Insurance-specific QA (policies and claims) ---
+@ins_router.post("/ask", response_model=QAResponse)
+async def ask_insurance_question(
+    request: QARequest,
+    x_session_id: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None)
+):
+    """QA endpoint specialized for policies and claims. Forces search over policy/claims indexes only."""
+    # Ensure both policy and claims indexes are searched
+    from app.core.config import settings
+    prev_query_both = settings.AZURE_SEARCH_QUERY_BOTH_INDEXES
+    settings.AZURE_SEARCH_QUERY_BOTH_INDEXES = True
+    try:
+        # Delegate to main pipeline but the azure_manager will now search policy+claims
+        return await ask_question(request, x_session_id, x_user_id)
+    finally:
+        settings.AZURE_SEARCH_QUERY_BOTH_INDEXES = prev_query_both
+
 
 @router.get("/performance-metrics/{session_id}", response_model=PerformanceMetrics)
 async def get_performance_metrics(

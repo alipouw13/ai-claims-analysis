@@ -35,7 +35,7 @@ export const AgentServiceStatus: React.FC<AgentServiceStatusProps> = ({
       setIsRefreshing(true);
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
       
-      const capabilitiesResponse = await fetch(`${apiBaseUrl}/qa/capabilities`);
+      const capabilitiesResponse = await fetch(`${apiBaseUrl}/qa/insurance/ask`.replace('/ask','/capabilities'));
       if (capabilitiesResponse.ok) {
         const capabilitiesData = await capabilitiesResponse.json();
         setCapabilities(capabilitiesData.capabilities || []);

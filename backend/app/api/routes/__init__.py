@@ -6,6 +6,7 @@ __all__ = [
     "documents",
     "knowledge_base",
     "qa",
+    "qa.ins_router",
     "sec_documents",
     "deployments",
     "evaluation",

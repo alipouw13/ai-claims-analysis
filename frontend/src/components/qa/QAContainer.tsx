@@ -334,19 +334,28 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings }) => {
         ? evaluationModel  // This is already the deployment name/id
         : (selectedModel?.model_name || evaluationModel);
 
-      const data = await apiService.askQuestion({
-        question: finalQuestion,
-        session_id: currentSessionId,
-        verification_level: verificationLevel,
-        chat_model: modelSettings.selectedModel,
-        embedding_model: modelSettings.embeddingModel,
-        temperature: modelSettings.temperature,
-        credibility_check_enabled: credibilityCheckEnabled, // Pass the toggle state
-        rag_method: ragMethod, // Pass the selected RAG method
-        evaluation_enabled: evaluationEnabled, // Pass evaluation toggle state
-        evaluator_type: evaluatorType, // Pass evaluator type
-        evaluation_model: modelForEvaluation, // Pass evaluation model (model_name for foundry, deployment name for custom)
-      });
+      const data = await (async () => {
+        // Call the insurance-specific backend route
+        const res = await fetch(`/api/v1/qa/insurance/ask`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question: finalQuestion,
+            session_id: currentSessionId,
+            verification_level: verificationLevel,
+            chat_model: modelSettings.selectedModel,
+            embedding_model: modelSettings.embeddingModel,
+            temperature: modelSettings.temperature,
+            credibility_check_enabled: credibilityCheckEnabled,
+            rag_method: ragMethod,
+            evaluation_enabled: evaluationEnabled,
+            evaluator_type: evaluatorType,
+            evaluation_model: modelForEvaluation,
+          })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      })();
         const qaAnswer: QAAnswer = {
         id: (Date.now() + 1).toString(),
         questionId: data.question_id, // Use the backend's question_id instead of qaQuestion.id
