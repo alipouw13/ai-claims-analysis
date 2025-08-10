@@ -61,7 +61,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({ modelSettings, rol
   const didInitialMessagesRender = useRef<boolean>(false);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Only auto-scroll after the user sends/receives a message, not on initial load
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
   };
 
   useEffect(() => {
