@@ -713,38 +713,43 @@ class AzureServiceManager:
             
             async def _search_with_client(client: AsyncSearchClient) -> List[Dict]:
                 search_start_local = time.time()
-                try:
-                    results_local = await client.search(
-                    search_text=query,
-                    vector_queries=[vector_query],
-                    select=["id", "content", "title", "document_id", "source", "chunk_id", 
-                           "document_type", "company", "filing_date", "section_type", 
-                           "page_number", "credibility_score", "processed_at", "citation_info",
-                           "ticker", "cik", "form_type", "accession_number", "industry", 
-                           "document_url", "sic", "entity_type", "period_end_date", 
-                           "chunk_index", "content_type", "chunk_method", "file_size"],
-                    filter=filters,
-                    top=top_k,
-                        query_type="semantic",                semantic_configuration_name="default-semantic-config"
-                    )
-                except Exception as sel_err:
-                    # Fallback when select fields don't match index schema
-                    logger.warning(f"Hybrid search select failed, retrying without select: {sel_err}")
-                    results_local = await client.search(
-                        search_text=query,
-                        vector_queries=[vector_query],
-                        filter=filters,
-                        top=top_k,
-                        query_type="semantic",                semantic_configuration_name="default-semantic-config"
-                    )
+
+                async def _run(select_fields: bool) -> List[Dict]:
+                    try:
+                        kwargs = dict(
+                            search_text=query,
+                            vector_queries=[vector_query],
+                            filter=filters,
+                            top=top_k,
+                            query_type="semantic",
+                            semantic_configuration_name="default-semantic-config",
+                        )
+                        if select_fields:
+                            kwargs["select"] = [
+                                "id", "content", "title", "document_id", "source", "chunk_id",
+                                "document_type", "company", "filing_date", "section_type",
+                                "page_number", "credibility_score", "processed_at", "citation_info",
+                                "ticker", "cik", "form_type", "accession_number", "industry",
+                                "document_url", "sic", "entity_type", "period_end_date",
+                                "chunk_index", "content_type", "chunk_method", "file_size",
+                            ]
+                        results_local = await client.search(**kwargs)
+                        filtered: List[Dict] = []
+                        async for r in results_local:
+                            rdict = dict(r)
+                            score = getattr(r, '@search.score', 0.0)
+                            if score >= min_score:
+                                rdict['search_score'] = score
+                                filtered.append(rdict)
+                        return filtered
+                    except Exception as e:
+                        if select_fields:
+                            logger.warning(f"Hybrid search failed with select, retrying without select: {e}")
+                            return await _run(False)
+                        raise
+
+                filtered = await _run(True)
                 _ = time.time() - search_start_local
-                filtered: List[Dict] = []
-                async for r in results_local:
-                    rdict = dict(r)
-                    score = getattr(r, '@search.score', 0.0)
-                    if score >= min_score:
-                        rdict['search_score'] = score
-                        filtered.append(rdict)
                 return filtered
 
             # If configured, search both policy and claims indexes in parallel and merge

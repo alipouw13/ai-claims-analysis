@@ -185,7 +185,9 @@ const AppContent = () => {
           </TabsContent>
           
           <TabsContent value="qa" className="m-0 bg-background">
-            <QAContainer modelSettings={globalModelSettings} domain={domain} />
+            <div className="p-4 min-h-[70vh]">
+              <QAContainer modelSettings={globalModelSettings} domain={domain} />
+            </div>
           </TabsContent>
           
           <TabsContent value="documents" className="m-0 bg-background">

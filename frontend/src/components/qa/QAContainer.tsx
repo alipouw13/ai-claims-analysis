@@ -117,7 +117,6 @@ interface QAContainerProps {
 
 export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain = 'insurance' }) => {
   const [questions, setQuestions] = useState<QAQuestion[]>([]);
-  const [riskPreset, setRiskPreset] = useState<string>("");
   const [answers, setAnswers] = useState<QAAnswer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isVerifyingSourcesForAnswer, setIsVerifyingSourcesForAnswer] = useState<string | null>(null);
@@ -320,7 +319,7 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
     question: string, 
     verificationLevel: 'basic' | 'thorough' | 'comprehensive'
   ) => {
-    const finalQuestion = riskPreset ? `${riskPreset}\n\n${question}` : question;
+    const finalQuestion = question;
     const qaQuestion: QAQuestion = {
       id: Date.now().toString(),
       question,
@@ -422,38 +421,7 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
     }
   };
 
-  // Domain-specific preset panel
-  const riskPrompts = (
-    domain === 'banking'
-      ? [
-          {
-            label: '10-K: Summarize key risk factors',
-            text: 'You are a financial analyst. Using 10-K filings, summarize the top risk factors with citations to specific sections and pages. Provide a concise list with supporting quotes.',
-          },
-          {
-            label: '10-K: Revenue trends (3 years)',
-            text: 'Analyze revenue trends over the last three fiscal years from 10-K filings. Provide figures and cite MD&A and financial statements sections appropriately.',
-          },
-          {
-            label: '10-K: Management outlook',
-            text: 'Extract and summarize management’s latest outlook from the MD&A section of the 10-K, citing the exact passages.',
-          },
-        ]
-      : [
-          {
-            label: 'Coverage exclusions for claim',
-            text: 'You are an insurance risk analyst. Use both policy and claims indexes to: (1) identify relevant policy sections, (2) list applicable exclusions with citations, (3) assess whether the claim facts are excluded. Provide citations for both policy chunks and claim chunks.',
-          },
-          {
-            label: 'Claim settlement reasonableness',
-            text: 'You are an underwriter. Compare policy coverage terms with the claim loss description and notes. Determine likely coverage and a reasonable settlement range. Cite policy and claim text that supports your recommendation.',
-          },
-          {
-            label: 'Policy limits vs claimed loss',
-            text: 'Analyze policy limits/deductibles and the claimed loss. Determine if limits are exceeded, and summarize the applicable limit and deductible clauses with citations.',
-          },
-        ]
-  );
+  // Preset panel removed per UX request
 
   const handleDecomposeQuestion = async (question: string) => {
     try {
@@ -590,29 +558,68 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
   };
 
   return (
-    <div className="flex h-screen bg-background">
-      <ResizablePanelGroup direction="horizontal" className="min-h-screen">
-        <ResizablePanel defaultSize={75} minSize={50}>
-          <div className="flex flex-col h-full">
-            {/* Domain-specific Presets */}
-            <div className="px-4 pt-4">
-              <div className="border rounded p-3 text-xs flex items-center gap-2 flex-wrap">
-                <span className="text-muted-foreground">{domain === 'banking' ? 'Financial Analysis Presets:' : 'Risk Analysis Presets:'}</span>
-                {riskPrompts.map((p) => (
-                  <button
-                    key={p.label}
-                    className={`px-2 py-1 rounded border ${riskPreset === p.text ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                    onClick={() => setRiskPreset(riskPreset === p.text ? '' : p.text)}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-                {riskPreset && (
-                  <button className="ml-auto text-muted-foreground underline" onClick={() => setRiskPreset('')}>Clear preset</button>
-                )}
-              </div>
+    <div className="flex flex-col h-screen bg-background w-full">
+      {/* Configuration bar at top, full width */}
+      <div className="px-4 pt-3 pb-2 w-full">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={handleNewSession} className="px-3 py-1 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">New QA Session</button>
+          <button onClick={handleToggleAgentStatus} className={`px-3 py-1 text-sm rounded-md hover:opacity-80 ${agentServiceConnected ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-red-100 text-red-800 border border-red-200'}`}>Agent Status</button>
+          <div className="flex items-center space-x-2">
+            <Label htmlFor="rag-method" className="text-xs text-muted-foreground">RAG Method:</Label>
+            <Select value={ragMethod} onValueChange={(value: 'agent' | 'traditional' | 'llamaindex' | 'agentic-vector' | 'mcp') => setRagMethod(value)}>
+              <SelectTrigger className="w-32 h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="agent">Agent</SelectItem>
+                <SelectItem value="traditional">Traditional RAG</SelectItem>
+                <SelectItem value="llamaindex">LlamaIndex</SelectItem>
+                <SelectItem value="agentic-vector">Agentic Vector</SelectItem>
+                <SelectItem value="mcp">MCP</SelectItem>
+              </SelectContent>
+            </Select>
+            <button onClick={handleShowOverallPerformance} className={`px-3 py-1 text-sm rounded-md hover:opacity-80 ${showOverallPerformance ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>📊 Session Performance</button>
+          </div>
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2"><Switch id="credibility-check" checked={credibilityCheckEnabled} onCheckedChange={setCredibilityCheckEnabled} /><Label htmlFor="credibility-check" className="text-xs text-muted-foreground">Credibility Check</Label></div>
+            <div className="flex items-center space-x-2"><Switch id="evaluation-enabled" checked={evaluationEnabled} onCheckedChange={setEvaluationEnabled} /><Label htmlFor="evaluation-enabled" className="text-xs text-muted-foreground">Evaluation</Label></div>
+          </div>
+          {evaluationEnabled && (
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-muted-foreground">Type:</Label>
+              <Select value={evaluatorType} onValueChange={(value) => setEvaluatorType(value as 'foundry' | 'custom')}>
+                <SelectTrigger className="w-20 h-6 text-xs border-none shadow-none p-0"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="custom">Custom</SelectItem>
+                  {availableEvaluators?.foundry_available && (<SelectItem value="foundry">Foundry</SelectItem>)}
+                  {!availableEvaluators?.foundry_available && availableEvaluators !== null && (<SelectItem value="foundry" disabled>Foundry (Unavailable)</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Label className="text-xs text-muted-foreground">Model:</Label>
+              <Select value={evaluationModel} onValueChange={setEvaluationModel}>
+                <SelectTrigger className="w-40 h-6 text-xs border-none shadow-none p-0"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {isLoadingEvaluationModels ? (<SelectItem value="loading" disabled>Loading models...</SelectItem>) : (
+                    availableEvaluationModels.map((model) => (
+                      <SelectItem key={model.id} value={model.id}><div className="flex flex-col"><span>{model.name}</span><span className="text-xs text-muted-foreground">{model.provider}</span></div></SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
-            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+          )}
+          <div className="text-xs text-muted-foreground ml-auto">Session: {currentSessionId.split('_')[2]} {agentServiceConnected && (<span className="text-green-600 font-medium ml-1">✓ Azure AI Agent Service</span>)}</div>
+        </div>
+        {/* Inline panels below controls */}
+        <div className="mt-2 space-y-3">
+          {showAgentStatus && (<AgentServiceStatus onRefresh={handleRefreshAgentStatus} isVisible={showAgentStatus} />)}
+          {showOverallPerformance && (<PerformanceDashboard sessionMetrics={sessionMetrics} onClose={() => setShowOverallPerformance(false)} />)}
+          {showQuestionPerformance && selectedQuestionPerformance && (<PerformanceDashboard questionMetrics={selectedQuestionPerformance} onClose={handleCloseQuestionPerformance} />)}
+          {showReasoningChain && selectedReasoningChain && (<ReasoningChainDisplay reasoningChain={selectedReasoningChain} onClose={() => setShowReasoningChain(false)} />)}
+        </div>
+      </div>
+
+      {/* Full-width Q&A thread */}
+      <div className="flex-1 flex flex-col w-full">
+        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
               <div className="space-y-6">
                 {questions.map((question, index) => {
                   // Match answers using either the backend question_id or fallback to frontend id
@@ -672,251 +679,11 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
                   </div>
                 )}
               </div>
-            </ScrollArea>
-              <div className="border-t p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <button
-                  onClick={handleNewSession}
-                  className="px-3 py-1 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-                >
-                  New QA Session
-                </button>                <button
-                  onClick={handleToggleAgentStatus}
-                  className={`px-3 py-1 text-sm rounded-md hover:opacity-80 ${
-                    agentServiceConnected 
-                      ? 'bg-green-100 text-green-800 border border-green-200' 
-                      : 'bg-red-100 text-red-800 border border-red-200'
-                  }`}
-                >
-                  Agent Status
-                </button>
-                
-                {/* RAG Method Selection */}
-                <div className="flex items-center space-x-2">
-                  <Label htmlFor="rag-method" className="text-xs text-muted-foreground">
-                    RAG Method:
-                  </Label>
-                  <Select value={ragMethod} onValueChange={(value: 'agent' | 'traditional' | 'llamaindex' | 'agentic-vector' | 'mcp') => setRagMethod(value)}>
-                    <SelectTrigger className="w-32 h-7 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="agent">Agent</SelectItem>
-                      <SelectItem value="traditional">Traditional RAG</SelectItem>
-                      <SelectItem value="llamaindex">LlamaIndex</SelectItem>
-                      <SelectItem value="agentic-vector">Agentic Vector</SelectItem>
-                      <SelectItem value="mcp">MCP</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
-                  {/* Overall Performance Button */}
-                  <button
-                    onClick={handleShowOverallPerformance}
-                    className={`px-3 py-1 text-sm rounded-md hover:opacity-80 ${
-                      showOverallPerformance 
-                        ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                        : 'bg-gray-100 text-gray-800 border border-gray-200'
-                    }`}
-                    title="Show overall session performance metrics"
-                  >
-                    📊 Session Performance
-                  </button>
-                </div>
-                
-                {/* Credibility Check Toggle */}
-                <div className="flex items-center space-x-2 ml-4">
-                  <Switch
-                    id="credibility-check"
-                    checked={credibilityCheckEnabled}
-                    onCheckedChange={setCredibilityCheckEnabled}
-                  />
-                  <Label htmlFor="credibility-check" className="text-xs text-muted-foreground">
-                    Credibility Check
-                  </Label>
-                </div>
-                
-                {/* Evaluation Toggle */}
-                <div className="flex items-center space-x-2 ml-4">
-                  <Switch
-                    id="evaluation-enabled"
-                    checked={evaluationEnabled}
-                    onCheckedChange={setEvaluationEnabled}
-                  />
-                  <Label htmlFor="evaluation-enabled" className="text-xs text-muted-foreground">
-                    Evaluation
-                  </Label>
-                </div>
-                
-                {/* Evaluator Type Selection */}
-                {evaluationEnabled && (
-                  <div className="flex items-center space-x-2 ml-4">
-                    <Label className="text-xs text-muted-foreground">Type:</Label>
-                    <Select value={evaluatorType} onValueChange={(value) => setEvaluatorType(value as 'foundry' | 'custom')}>
-                      <SelectTrigger className="w-20 h-6 text-xs border-none shadow-none p-0">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="custom">Custom</SelectItem>
-                        {availableEvaluators?.foundry_available && (
-                          <SelectItem value="foundry">Foundry</SelectItem>
-                        )}
-                        {!availableEvaluators?.foundry_available && availableEvaluators !== null && (
-                          <SelectItem value="foundry" disabled>
-                            <div className="flex items-center space-x-1">
-                              <span>Foundry</span>
-                              <span className="text-xs text-muted-foreground">(Unavailable)</span>
-                            </div>
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                
-                {/* Evaluation Model Selection */}
-                {evaluationEnabled && (
-                  <div className="flex items-center space-x-2 ml-4">
-                    <Label className="text-xs text-muted-foreground">Model:</Label>
-                    <Select value={evaluationModel} onValueChange={setEvaluationModel}>
-                      <SelectTrigger className="w-32 h-6 text-xs border-none shadow-none p-0">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {isLoadingEvaluationModels ? (
-                          <SelectItem value="loading" disabled>Loading models...</SelectItem>
-                        ) : (
-                          availableEvaluationModels.map((model) => (
-                            <SelectItem key={model.id} value={model.id}>
-                              <div className="flex flex-col">
-                                <span>{model.name}</span>
-                                <span className="text-xs text-muted-foreground">{model.provider}</span>
-                              </div>
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                
-                <span className="text-xs text-muted-foreground">{/* separator */}</span>
-                <span className="text-xs text-muted-foreground">
-                  Session: {currentSessionId.split('_')[2]}
-                </span>
-                {agentServiceConnected && (
-                  <span className="text-xs text-green-600 font-medium">
-                    ✓ Azure AI Agent Service
-                  </span>
-                )}
-              </div>
-              <QuestionInput
-                onAskQuestion={handleAskQuestion}
-                disabled={isLoading}
-              />
-            </div>
-          </div>
-        </ResizablePanel>
-          {(showQuestionDecomposition || showAgentStatus || showOverallPerformance || showQuestionPerformance || showReasoningChain) && (
-          <>
-            <ResizableHandle />
-            <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
-              {showQuestionDecomposition && decomposedQuestions && (
-                <QuestionDecomposition
-                  decomposition={decomposedQuestions}
-                  onClose={() => setShowQuestionDecomposition(false)}
-                />
-              )}
-              
-              {showAgentStatus && (
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium">Agent Service Status</h3>
-                    <button
-                      onClick={() => setShowAgentStatus(false)}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      ✕ Close
-                    </button>
-                  </div>
-                  <AgentServiceStatus 
-                    onRefresh={handleRefreshAgentStatus} 
-                    isVisible={showAgentStatus}
-                  />
-                </div>
-              )}
-              
-              {/* Overall Performance Modal */}
-              {showOverallPerformance && (
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium">📊 Session Performance Analytics</h3>
-                    <button
-                      onClick={() => setShowOverallPerformance(false)}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      ✕ Close
-                    </button>
-                  </div>
-                  <PerformanceDashboard
-                    sessionMetrics={sessionMetrics}
-                    isVisible={showOverallPerformance}
-                  />
-                </div>
-              )}
-              
-              {/* Question-Specific Performance Modal */}
-              {showQuestionPerformance && selectedQuestionPerformance && (
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium">📈 Question Performance</h3>
-                    <button
-                      onClick={handleCloseQuestionPerformance}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      ✕ Close
-                    </button>
-                  </div>
-                  <PerformanceDashboard
-                    benchmark={selectedQuestionPerformance}
-                    isVisible={showQuestionPerformance}
-                  />
-                </div>
-              )}
-              
-              {showReasoningChain && selectedReasoningChain && (
-                <div className="p-4">
-                  <ReasoningChainDisplay
-                    reasoningChain={selectedReasoningChain}
-                    isVisible={showReasoningChain}
-                    onClose={() => setShowReasoningChain(false)}
-                  />
-                </div>
-              )}
-              
-              {/* Evaluation Result Modal */}
-              {showEvaluationModal && selectedEvaluationId && (
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium">📋 Evaluation Result</h3>
-                    <button
-                      onClick={() => setShowEvaluationModal(false)}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      ✕ Close
-                    </button>
-                  </div>
-                  <div className="text-sm text-muted-foreground mb-4">
-                    Evaluation ID: <span className="text-foreground">{selectedEvaluationId}</span>
-                  </div>
-                  <pre className="bg-muted p-4 rounded-md text-xs overflow-auto">
-                    {JSON.stringify(evaluationResults[selectedEvaluationId], null, 2)}
-                  </pre>
-                </div>
-              )}
-            </ResizablePanel>
-          </>
-        )}
-      </ResizablePanelGroup>
+        </ScrollArea>
+        <div className="border-t p-4">
+          <QuestionInput onAskQuestion={handleAskQuestion} disabled={isLoading} />
+        </div>
+      </div>
       
       {/* Source Verification Modal */}
       <SourceVerification

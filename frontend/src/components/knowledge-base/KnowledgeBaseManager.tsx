@@ -416,20 +416,12 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" onClick={async () => {
-                            setPreviewDoc({ id: doc.id, index: ((doc as any).index || 'policy') as any });
-                            setPreviewLoading(true);
-                            setPreviewOpen(true);
-                            try {
-                              const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
-                              const res = await fetch(`${apiBaseUrl}/knowledge-base/documents/${doc.id}/chunks?index=${(doc as any).index || 'policy'}`);
-                              const data = await res.json();
-                              setPreviewChunks(data.chunks || []);
-                            } catch (e) {
-                              setPreviewChunks([]);
-                            } finally {
-                              setPreviewLoading(false);
-                            }
+                          <Button variant="outline" size="sm" onClick={() => {
+                            // Route to Chunk Visualization tab instead of opening the side preview
+                            const idx = ((doc as any).index || 'policy') as 'policy' | 'claims';
+                            setPreviewDoc({ id: doc.id, index: idx });
+                            setActiveTab('chunking');
+                            setPreviewOpen(false);
                           }}>
                             <Eye className="h-4 w-4" />
                           </Button>
