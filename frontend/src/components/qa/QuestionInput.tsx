@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 interface QuestionInputProps {
   onAskQuestion: (question: string, verificationLevel: 'basic' | 'thorough' | 'comprehensive') => void;
   disabled?: boolean;
+  domain?: 'insurance' | 'banking';
 }
 
-export const QuestionInput: React.FC<QuestionInputProps> = ({ onAskQuestion, disabled }) => {
+export const QuestionInput: React.FC<QuestionInputProps> = ({ onAskQuestion, disabled, domain = 'insurance' }) => {
   const [question, setQuestion] = useState('');
   const [verificationLevel, setVerificationLevel] = useState<'basic' | 'thorough' | 'comprehensive'>('thorough');
 
@@ -32,12 +33,19 @@ export const QuestionInput: React.FC<QuestionInputProps> = ({ onAskQuestion, dis
     setQuestion(exampleQuestion);
   };
 
-  const exampleQuestions = [
-    'What exclusions apply to the submitted claim and which sections support them?',
-    'Is this claim eligible for auto-approval based on policy terms? Provide reasoning.',
-    'Compare policy limits and deductibles with the claimed loss; cite the clauses.',
-    'Which documents are missing to complete this claim and where is this stated?'
-  ];
+  const exampleQuestions = domain === 'banking'
+    ? [
+        'Summarize the top risk factors from the latest 10-K with citations to sections/pages.',
+        'What were YoY revenue and net income trends for the last 3 fiscal years? Cite MD&A and financial statements.',
+        'How did management describe liquidity and capital resources in the latest 10-Q? Provide quotes with page references.',
+        'List major legal proceedings or contingencies and where they are disclosed in the filing.'
+      ]
+    : [
+        'What exclusions apply to the submitted claim and which sections support them?',
+        'Is this claim eligible for auto-approval based on policy terms? Provide reasoning.',
+        'Compare policy limits and deductibles with the claimed loss; cite the clauses.',
+        'Which documents are missing to complete this claim and where is this stated?'
+      ];
 
   const getVerificationDescription = (level: string) => {
     switch (level) {
@@ -113,14 +121,16 @@ export const QuestionInput: React.FC<QuestionInputProps> = ({ onAskQuestion, dis
 
       <div className="space-y-2">
         <label htmlFor="question" className="text-sm font-medium text-foreground">
-          Policy and Claims Questions
+          {domain === 'banking' ? 'Financial Filings Questions' : 'Policy and Claims Questions'}
         </label>
         <Textarea
           id="question"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask a policy or claims question that requires analysis and source verification..."
+          placeholder={domain === 'banking' 
+            ? 'Ask about financial documents (10-K/10-Q) and include source verification...'
+            : 'Ask a policy or claims question that requires analysis and source verification...'}
           className="min-h-[100px] resize-none"
           disabled={disabled}
         />

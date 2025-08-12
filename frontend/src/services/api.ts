@@ -199,8 +199,9 @@ class ApiService {
     });
   }
 
-  async getKnowledgeBaseMetrics(): Promise<KnowledgeBaseMetrics> {
-    return this.makeRequest<KnowledgeBaseMetrics>('/knowledge-base/metrics');
+  async getKnowledgeBaseMetrics(index?: 'policy' | 'claims'): Promise<KnowledgeBaseMetrics> {
+    const qs = index ? `?index=${index}` : '';
+    return this.makeRequest<KnowledgeBaseMetrics>(`/knowledge-base/metrics${qs}`);
   }
 
   async getDocumentContent(documentId: string, section?: string): Promise<{

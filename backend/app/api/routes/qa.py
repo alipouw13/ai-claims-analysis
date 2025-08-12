@@ -57,7 +57,8 @@ async def ask_question(
         user_id=x_user_id,
         request_text=request.question,
         temperature=request.temperature,
-        verification_level=request.verification_level.value if request.verification_level else None,
+        # Accept both Enum and raw string; avoid attribute errors
+        verification_level=str(request.verification_level) if request.verification_level is not None else None,
         credibility_check_enabled=request.credibility_check_enabled
     )
     
@@ -1344,33 +1345,51 @@ async def process_with_agent_rag(
     embedding_tracking_id: str,
     question_id: str
 ) -> dict:
-    """Process QA request using Azure AI Agent Service (existing implementation)"""
-    logger.info("Getting Azure AI Agent Service...")
-    azure_ai_agent_service = await orchestrator._get_azure_ai_agent_service()
-    
-    logger.info("Processing QA request with Azure AI Agent Service...")
-    result = await azure_ai_agent_service.process_qa_request(
-        question=request.question,
-        context={
-            **(request.context or {}),
-            'kb_manager': kb_manager,
-            'credibility_check_enabled': request.credibility_check_enabled,
-            'token_tracker': token_tracker,
-            'tracking_id': tracking_id,
-            'embedding_tracking_id': embedding_tracking_id,
-            'performance_tracker': performance_tracker,
-            'question_id': question_id
-        },
-        verification_level=request.verification_level,
-        session_id=session_id,
-        model_config={
-            "chat_model": request.chat_model,
-            "embedding_model": request.embedding_model,
-            "temperature": request.temperature
-        }
-    )
-    
-    return result
+    """Process QA request using Azure AI Agent Service with graceful fallback.
+
+    If the Azure AI Agents API is unavailable or returns ResourceNotFound, we
+    fall back to Traditional RAG to prevent a 500 and still return an answer.
+    """
+    try:
+        logger.info("Getting Azure AI Agent Service...")
+        azure_ai_agent_service = await orchestrator._get_azure_ai_agent_service()
+
+        logger.info("Processing QA request with Azure AI Agent Service...")
+        result = await azure_ai_agent_service.process_qa_request(
+            question=request.question,
+            context={
+                **(request.context or {}),
+                'kb_manager': kb_manager,
+                'credibility_check_enabled': request.credibility_check_enabled,
+                'token_tracker': token_tracker,
+                'tracking_id': tracking_id,
+                'embedding_tracking_id': embedding_tracking_id,
+                'performance_tracker': performance_tracker,
+                'question_id': question_id,
+                # Hint KB manager to prefer SEC index when banking domain is implied
+                'prefer_sec': True
+            },
+            verification_level=str(request.verification_level),
+            session_id=session_id,
+            model_config={
+                "chat_model": request.chat_model,
+                "embedding_model": request.embedding_model,
+                "temperature": request.temperature
+            }
+        )
+        return result
+    except Exception as agent_err:
+        logger.warning(f"Agent RAG failed, falling back to Traditional RAG: {agent_err}")
+        # Fallback path mirrors 'traditional' processing
+        return await process_with_traditional_rag(
+            request=request,
+            azure_manager=azure_manager,
+            session_id=session_id,
+            token_tracker=token_tracker,
+            tracking_id=tracking_id,
+            embedding_tracking_id=embedding_tracking_id,
+            question_id=question_id
+        )
 
 async def process_with_agentic_vector_rag(
     request: QARequest,

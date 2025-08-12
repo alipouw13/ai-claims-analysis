@@ -155,6 +155,73 @@ async def get_document_chunks(document_id: str, index: str = "policy"):
         logger.error(f"Error getting document chunks: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve chunks")
 
+@router.get("/documents/{document_id}/chunk-visualization")
+async def get_policy_claims_chunk_visualization(document_id: str, index: str = "policy"):
+    """Return SEC-style chunk visualization payload for policy/claims documents.
+    Builds ChunkVisualizationResponse with basic stats so the frontend can render
+    totals, averages, and distributions similar to SEC analysis.
+    """
+    try:
+        azure_manager = AzureServiceManager()
+        await azure_manager.initialize()
+
+        ix_name = settings.AZURE_SEARCH_POLICY_INDEX_NAME if index.lower() == "policy" else settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
+        raw_chunks = await azure_manager.get_chunks_for_document(ix_name, document_id, top_k=2000)
+
+        if not raw_chunks:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # Normalize and compute stats
+        chunks = []
+        total_content_length = 0
+        for i, c in enumerate(raw_chunks):
+            content = c.get("content") or c.get("chunk") or ""
+            total_content_length += len(content)
+            chunks.append({
+                "chunk_id": c.get("chunk_id") or c.get("id") or f"chunk_{i}",
+                "content": content,
+                "content_length": len(content),
+                "page_number": c.get("page_number"),
+                "section_type": c.get("section_type", ""),
+                "credibility_score": c.get("credibility_score", 0),
+                "citation_info": c.get("citation_info", {}),
+                "search_score": c.get("@search.score", 0),
+            })
+
+        avg_len = round(total_content_length / len(chunks), 2) if chunks else 0
+
+        document_info = {
+            "document_id": document_id,
+            "title": raw_chunks[0].get("title") or raw_chunks[0].get("source") or document_id,
+            "index": index,
+            "processed_at": raw_chunks[0].get("processed_at", ""),
+            "file_size": raw_chunks[0].get("file_size"),
+            "total_chunks": len(chunks),
+        }
+
+        chunk_stats = {
+            "total_chunks": len(chunks),
+            "avg_chunk_length": avg_len,
+            "total_content_length": total_content_length,
+            "page_range": {"min": None, "max": None},
+            "section_types": sorted(list({c.get("section_type", "") for c in raw_chunks if c.get("section_type")})),
+            "avg_credibility_score": round(
+                sum(c.get("credibility_score", 0) for c in raw_chunks) / len(raw_chunks), 3
+            ) if raw_chunks else 0,
+        }
+
+        return {
+            "document_id": document_id,
+            "document_info": document_info,
+            "chunks": chunks,
+            "chunk_stats": chunk_stats,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error building policy/claims chunk visualization: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get chunk visualization")
+
 @router.delete("/documents/{document_id}")
 async def delete_document(document_id: str):
     """Delete document from knowledge base"""
@@ -249,27 +316,66 @@ async def resolve_conflict(conflict_id: str, status: str):
         raise HTTPException(status_code=500, detail="Failed to resolve conflict")
 
 @router.get("/metrics")
-async def get_knowledge_base_metrics():
-    """Get knowledge base metrics and analytics"""
+async def get_knowledge_base_metrics(index: Optional[str] = None):
+    """Get knowledge base metrics and analytics for policy/claims indexes.
+
+    If index is provided ('policy' or 'claims'), compute metrics from that index only.
+    Otherwise, aggregate across both policy and claims.
+    """
     try:
         observability.track_request("get_kb_metrics")
-        
         logger.info("Knowledge base metrics requested")
-        
+
+        azure_manager = AzureServiceManager()
+        await azure_manager.initialize()
+
+        # Resolve which indexes to include
+        from app.core.config import settings
+        ix_list = []
+        req = (index or "").lower()
+        if req == "policy":
+            if settings.AZURE_SEARCH_POLICY_INDEX_NAME:
+                ix_list = [settings.AZURE_SEARCH_POLICY_INDEX_NAME]
+        elif req == "claims" or req == "claim":
+            if settings.AZURE_SEARCH_CLAIMS_INDEX_NAME:
+                ix_list = [settings.AZURE_SEARCH_CLAIMS_INDEX_NAME]
+        else:
+            for ix in [settings.AZURE_SEARCH_POLICY_INDEX_NAME, settings.AZURE_SEARCH_CLAIMS_INDEX_NAME]:
+                if ix:
+                    ix_list.append(ix)
+
+        total_documents = 0
+        total_chunks = 0
+        documents_by_type: Dict[str, int] = {}
+
+        # Iterate indexes and accumulate counts
+        for ix in ix_list:
+            try:
+                items = await azure_manager.list_unique_documents(ix, top_k=2000)
+                total_documents += len(items)
+                # Estimate chunks via direct search (no select to avoid schema mismatches)
+                client = azure_manager.get_search_client_for_index(ix)
+                search_results = await client.search(search_text="*", top=1000, query_type="simple")
+                batch_count = 0
+                async for _ in search_results:
+                    batch_count += 1
+                total_chunks += batch_count
+                # Type distribution placeholder (policy vs claims)
+                ix_label = "policy" if ix == settings.AZURE_SEARCH_POLICY_INDEX_NAME else "claims"
+                documents_by_type[ix_label] = documents_by_type.get(ix_label, 0) + len(items)
+            except Exception as e:
+                logger.warning(f"Metrics: skipping index '{ix}' due to error: {e}")
+
         metrics = {
-            "total_documents": 3,
-            "total_chunks": 245,
-            "active_conflicts": 2,
-            "processing_rate": 94,
-            "documents_by_type": {
-                "10-K": 1,
-                "10-Q": 1,
-                "Annual Report": 1
-            },
+            "total_documents": total_documents,
+            "total_chunks": total_chunks,
+            "active_conflicts": 0,
+            "processing_rate": 100 if total_documents > 0 else 0,
+            "documents_by_type": documents_by_type,
             "processing_queue_size": 0,
             "last_updated": datetime.utcnow().isoformat()
         }
-        
+
         return metrics
     except Exception as e:
         logger.error(f"Error getting KB metrics: {e}")

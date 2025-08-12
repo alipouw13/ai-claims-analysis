@@ -64,6 +64,11 @@ const ChunkingVisualization: React.FC<ChunkingVisualizationProps> = ({ initialDo
   const [domain, setDomain] = useState<'insurance' | 'banking'>(() => (localStorage.getItem('domain') as any) || 'insurance');
   const [libraryDocs, setLibraryDocs] = useState<Array<{id: string; name: string}>>([]);
   const [documentStructure, setDocumentStructure] = useState<DocumentStructure | null>(null);
+  const [analytics, setAnalytics] = useState<{
+    total_chunks: number;
+    avg_chunk_length: number;
+    section_types: string[];
+  } | null>(null);
   const [selectedChunk, setSelectedChunk] = useState<ChunkMetadata | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [chunkingStrategy] = useState<'hierarchical' | 'semantic' | 'hybrid'>('hierarchical');
@@ -202,15 +207,16 @@ const ChunkingVisualization: React.FC<ChunkingVisualizationProps> = ({ initialDo
       if (!selectedDocument) return;
       try {
         if (domain === 'insurance') {
-          // For insurance, use the generic chunks endpoint (policy index by default)
+          // Use new SEC-style policy/claims chunk visualization endpoint
           const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
-          const res = await fetch(`${apiBaseUrl}/knowledge-base/documents/${selectedDocument}/chunks?index=${index}`);
-          const data = await res.json();
-          const chunks = data.chunks || [];
-          // Build a simple structure from chunks
+          const res = await fetch(`${apiBaseUrl}/knowledge-base/documents/${selectedDocument}/chunk-visualization?index=${index}`);
+          const payload = await res.json();
+          const chunks = payload.chunks || [];
+
+          // Build a richer structure from API
           const structure: DocumentStructure = {
             id: selectedDocument,
-            filename: selectedDocument,
+            filename: payload.document_info?.title || selectedDocument,
             totalPages: 0,
             processingStatus: 'completed',
             processingProgress: 100,
@@ -221,17 +227,17 @@ const ChunkingVisualization: React.FC<ChunkingVisualizationProps> = ({ initialDo
                 endPage: 1,
                 subsections: [{
                   name: 'All Chunks', startPage: 1, endPage: 1,
-                  chunks: chunks.slice(0, 50).map((c: any, idx: number) => ({
-                    id: c.id || c.chunk_id || `chunk_${idx}`,
+                  chunks: chunks.slice(0, 200).map((c: any, idx: number) => ({
+                    id: c.chunk_id || c.id || `chunk_${idx}`,
                     content: c.content || '',
-                    startPage: 1,
-                    endPage: 1,
-                    section: 'Document',
+                    startPage: c.page_number || 1,
+                    endPage: c.page_number || 1,
+                    section: c.section_type || 'Document',
                     subsection: 'All Chunks',
                     chunkType: 'text',
-                    size: (c.content || '').length,
+                    size: c.content_length || (c.content || '').length,
                     overlap: 0,
-                    confidence: 0.9,
+                    confidence: c.credibility_score ?? 0.9,
                     citations: []
                   }))
                 }]
@@ -239,6 +245,11 @@ const ChunkingVisualization: React.FC<ChunkingVisualizationProps> = ({ initialDo
             ]
           };
           setDocumentStructure(structure);
+          setAnalytics({
+            total_chunks: payload.chunk_stats?.total_chunks ?? chunks.length,
+            avg_chunk_length: payload.chunk_stats?.avg_chunk_length ?? 0,
+            section_types: payload.chunk_stats?.section_types ?? [],
+          });
         } else {
           // Banking: use SEC document chunks endpoint
           const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -372,6 +383,21 @@ const ChunkingVisualization: React.FC<ChunkingVisualizationProps> = ({ initialDo
             {documentStructure ? (
               <ScrollArea className="h-[600px] pr-4">
                 <div className="space-y-4">
+                  {analytics && (
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">{analytics.total_chunks}</div>
+                        <div className="text-sm text-muted-foreground">Total Chunks</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">{analytics.avg_chunk_length}</div>
+                        <div className="text-sm text-muted-foreground">Avg Length</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-sm text-muted-foreground">Sections: {analytics.section_types.join(', ')}</div>
+                      </div>
+                    </div>
+                  )}
                   {documentStructure.sections.map((section) => (
                     <div key={section.name} className="border rounded-lg p-4">
                       <div

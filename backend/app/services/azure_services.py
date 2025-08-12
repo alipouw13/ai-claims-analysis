@@ -716,14 +716,26 @@ class AzureServiceManager:
 
                 async def _run(select_fields: bool) -> List[Dict]:
                     try:
-                        kwargs = dict(
-                            search_text=query,
-                            vector_queries=[vector_query],
-                            filter=filters,
-                            top=top_k,
-                            query_type="semantic",
-                            semantic_configuration_name="default-semantic-config",
-                        )
+                        # Choose semantic vs simple per index
+                        index_name = getattr(client, "_index_name", "")
+                        is_sec = index_name == getattr(settings, 'AZURE_SEARCH_INDEX_NAME', index_name)
+
+                        if is_sec:
+                            kwargs = dict(
+                                search_text=query,
+                                vector_queries=[vector_query],
+                                filter=filters,
+                                top=top_k,
+                                query_type="semantic",
+                                semantic_configuration_name="default-semantic-config",
+                            )
+                        else:
+                            kwargs = dict(
+                                search_text=query,
+                                filter=filters,
+                                top=top_k,
+                                query_type="simple",
+                            )
                         if select_fields:
                             kwargs["select"] = [
                                 "id", "content", "title", "document_id", "source", "chunk_id",
@@ -745,7 +757,17 @@ class AzureServiceManager:
                     except Exception as e:
                         if select_fields:
                             logger.warning(f"Hybrid search failed with select, retrying without select: {e}")
-                            return await _run(False)
+                            try:
+                                return await _run(False)
+                            except Exception as inner:
+                                logger.warning(f"Retry without select also failed: {inner}. Falling back to simple search (no vector)")
+                                simple_results = await client.search(search_text=query, filter=filters, top=top_k, query_type="simple")
+                                out: List[Dict] = []
+                                async for r in simple_results:
+                                    rd = dict(r)
+                                    rd['search_score'] = getattr(r, '@search.score', 0.0)
+                                    out.append(rd)
+                                return out
                         raise
 
                 filtered = await _run(True)
@@ -764,11 +786,22 @@ class AzureServiceManager:
                     search_tasks.append(_search_with_client(c))
                 merged_lists = await asyncio.gather(*search_tasks)
                 filtered_results = [item for sub in merged_lists for item in sub]
-                # Deduplicate by id, keep highest score
+                # Deduplicate by a stable key; fall back if 'id' missing
                 best_by_id: Dict[str, Dict] = {}
+                try:
+                    import uuid as _uuid
+                except Exception:
+                    _uuid = None
                 for item in filtered_results:
-                    if item['id'] not in best_by_id or item['search_score'] > best_by_id[item['id']]['search_score']:
-                        best_by_id[item['id']] = item
+                    doc_key = (
+                        item.get('id') or
+                        item.get('document_id') or
+                        item.get('chunk_id') or
+                        item.get('parent_id') or
+                        (f"auto_{_uuid.uuid4()}" if _uuid else str(len(best_by_id)+1))
+                    )
+                    if doc_key not in best_by_id or item.get('search_score', 0) > best_by_id[doc_key].get('search_score', 0):
+                        best_by_id[doc_key] = item
                 filtered_results = sorted(best_by_id.values(), key=lambda x: x.get('search_score', 0), reverse=True)[:top_k]
             else:
                 filtered_results = await _search_with_client(self.search_client)

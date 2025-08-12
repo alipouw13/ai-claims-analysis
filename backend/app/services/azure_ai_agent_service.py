@@ -498,7 +498,8 @@ class AzureAIAgentService:
                     filters=context.get('filters'),
                     chat_model=self._extract_deployment_name(model_config.get('chat_model')),
                     token_tracker=token_tracker,
-                    tracking_id=search_tracking_id  # Use embedding-specific tracking ID
+                    tracking_id=search_tracking_id,  # Use embedding-specific tracking ID
+                    prefer_sec=context.get('prefer_sec', False)
                 )
                 
                 # Finalize embedding tracking after search operations complete
@@ -1252,10 +1253,15 @@ class AzureAIAgentService:
                 agent_id = None
                 found_agent = False
                 
-                # List all agents and check if one with the target name exists
-                agent_list = self.client.agents.list_agents()
+                # Health-check: ensure Agents resource is reachable; if 404, try to create directly
+                try:
+                    agent_list = self.client.agents.list_agents()
+                except Exception as e:
+                    logger.warning(f"Agents list failed (health-check). Will attempt direct create for '{agent_name}': {e}")
+                    agent_list = []
+
                 for agent in agent_list:
-                    if agent.name == agent_name:
+                    if getattr(agent, 'name', None) == agent_name:
                         agent_id = agent.id
                         found_agent = True
                         break
@@ -1271,6 +1277,7 @@ class AzureAIAgentService:
                     if not model_deployment:
                         model_deployment = settings.AZURE_OPENAI_CHAT_DEPLOYMENT_NAME
                     
+                    # Auto-create if not found or listing failed (handles 404 resource not found)
                     agent_definition = self.client.agents.create_agent(
                         model=model_deployment,
                         name=agent_name,

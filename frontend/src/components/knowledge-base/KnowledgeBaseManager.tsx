@@ -44,7 +44,7 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [indexFilter]);
 
   // Live polling for status updates when viewing library or during upload
   useEffect(() => {
@@ -64,7 +64,7 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
       const [documentsResponse, conflictsResponse, metricsResponse] = await Promise.all([
         apiService.listDocuments(indexFilter !== 'all' ? { index: indexFilter } as any : undefined as any),
         apiService.getConflicts(),
-        apiService.getKnowledgeBaseMetrics()
+        apiService.getKnowledgeBaseMetrics(indexFilter === 'all' ? undefined : (indexFilter as 'policy' | 'claims'))
       ]);
       
       setDocuments(documentsResponse.documents);

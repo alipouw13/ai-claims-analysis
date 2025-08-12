@@ -614,12 +614,12 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
           {showOverallPerformance && (<PerformanceDashboard sessionMetrics={sessionMetrics} onClose={() => setShowOverallPerformance(false)} />)}
           {showQuestionPerformance && selectedQuestionPerformance && (<PerformanceDashboard questionMetrics={selectedQuestionPerformance} onClose={handleCloseQuestionPerformance} />)}
           {showReasoningChain && selectedReasoningChain && (<ReasoningChainDisplay reasoningChain={selectedReasoningChain} onClose={() => setShowReasoningChain(false)} />)}
-        </div>
-      </div>
+              </div>
+            </div>
 
       {/* Full-width Q&A thread */}
       <div className="flex-1 flex flex-col w-full">
-        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
               <div className="space-y-6">
                 {questions.map((question, index) => {
                   // Match answers using either the backend question_id or fallback to frontend id
@@ -679,11 +679,11 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
                   </div>
                 )}
               </div>
-        </ScrollArea>
-        <div className="border-t p-4">
-          <QuestionInput onAskQuestion={handleAskQuestion} disabled={isLoading} />
-        </div>
-      </div>
+            </ScrollArea>
+              <div className="border-t p-4">
+              <QuestionInput onAskQuestion={handleAskQuestion} disabled={isLoading} domain={domain} />
+            </div>
+          </div>
       
       {/* Source Verification Modal */}
       <SourceVerification

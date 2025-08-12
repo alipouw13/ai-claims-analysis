@@ -677,7 +677,8 @@ class AdaptiveKnowledgeBaseManager:
 
     async def search_knowledge_base(self, query: str, filters: Dict = None, 
                                   top_k: int = 10, chat_model: str = None,
-                                  token_tracker=None, tracking_id=None) -> List[Dict]:
+                                  token_tracker=None, tracking_id=None,
+                                  prefer_sec: bool = False) -> List[Dict]:
         """
         Search the adaptive knowledge base
         
@@ -706,13 +707,29 @@ class AdaptiveKnowledgeBaseManager:
                 
                 filter_str = " and ".join(filter_parts) if filter_parts else None
             
-            results = await self.azure_manager.hybrid_search(
-                query=query,
-                top_k=top_k,
-                filters=filter_str,
-                token_tracker=token_tracker,
-                tracking_id=tracking_id
-            )
+            # When banking domain is active, prefer SEC index explicitly by searching only rag-sec
+            if prefer_sec and getattr(settings, 'AZURE_SEARCH_INDEX_NAME', None):
+                # Temporarily disable multi-index search so only SEC is queried
+                original_both = getattr(settings, 'AZURE_SEARCH_QUERY_BOTH_INDEXES', False)
+                try:
+                    setattr(settings, 'AZURE_SEARCH_QUERY_BOTH_INDEXES', False)
+                    results = await self.azure_manager.hybrid_search(
+                        query=query,
+                        top_k=top_k,
+                        filters=filter_str,
+                        token_tracker=token_tracker,
+                        tracking_id=tracking_id
+                    )
+                finally:
+                    setattr(settings, 'AZURE_SEARCH_QUERY_BOTH_INDEXES', original_both)
+            else:
+                results = await self.azure_manager.hybrid_search(
+                    query=query,
+                    top_k=top_k,
+                    filters=filter_str,
+                    token_tracker=token_tracker,
+                    tracking_id=tracking_id
+                )
             
             enhanced_results = []
             for result in results:
