@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Request
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import logging
 import uuid
 from datetime import datetime
@@ -23,6 +23,10 @@ from app.core.config import settings
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# In-memory trackers for policy/claims upload progress (mirrors SEC batch UX)
+kb_processing_status: Dict[str, Dict[str, Any]] = {}
+kb_batches: Dict[str, Dict[str, Any]] = {}
+
 @router.post("/upload", response_model=List[DocumentUploadResponse])
 async def upload_documents(
     request: Request,
@@ -37,6 +41,15 @@ async def upload_documents(
     """Upload multiple financial documents for processing with Azure Document Intelligence"""
     try:
         responses = []
+        batch_id = f"kb_batch_{int(time.time())}"
+        kb_batches[batch_id] = {
+            "batch_id": batch_id,
+            "total_files": len(files),
+            "completed": 0,
+            "failed": 0,
+            "started_at": datetime.utcnow().isoformat(),
+            "documents": []
+        }
         allowed_extensions = {'.pdf', '.docx', '.doc', '.txt'}
         upload_dir = "/tmp/uploads"
         os.makedirs(upload_dir, exist_ok=True)
@@ -111,6 +124,23 @@ async def upload_documents(
                 if metadata.get("is_claim"):
                     target_index = settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
 
+                # Initialize processing tracker
+                kb_processing_status[document_id] = {
+                    "document_id": document_id,
+                    "filename": file.filename,
+                    "index": "claims" if metadata.get("is_claim") else "policy",
+                    "stage": "queued",
+                    "progress_percent": 0.0,
+                    "message": "Queued for processing",
+                    "started_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow().isoformat(),
+                    "completed_at": None,
+                    "chunks_created": 0,
+                    "error_message": None,
+                    "batch_id": batch_id,
+                }
+                kb_batches[batch_id]["documents"].append(document_id)
+
                 asyncio.create_task(
                     process_document_async(
                         document_processor, 
@@ -127,7 +157,7 @@ async def upload_documents(
                 response = DocumentUploadResponse(
                     document_id=document_id,
                     status=DocumentStatus.PROCESSING,
-                    message="Document uploaded successfully and processing started",
+                    message=f"Upload accepted. Processing started (batch {batch_id})",
                     processing_started_at=datetime.utcnow()
                 )
                 responses.append(response)
@@ -169,6 +199,21 @@ async def process_document_async(
         
         logger.info(f"Calling processor.process_document()...")
         start_time = time.time()
+
+        # Status helper
+        def _update_status(stage: str, percent: float, message: str, **extra):
+            st = kb_processing_status.get(document_id)
+            if not st:
+                return
+            st.update({
+                "stage": stage,
+                "progress_percent": float(max(0.0, min(100.0, percent))),
+                "message": message,
+                "updated_at": datetime.utcnow().isoformat(),
+                **extra
+            })
+
+        _update_status("parsing", 10.0, "Analyzing document content")
         
         processed_doc = await processor.process_document(
             content=content,
@@ -189,6 +234,15 @@ async def process_document_async(
             processed_doc['processing_stats']['total_chunks'],
             processing_time
         )
+
+        # Mark completed in trackers
+        _update_status("completed", 100.0, "Document processed and indexed", completed_at=datetime.utcnow().isoformat(), chunks_created=processed_doc['processing_stats']['total_chunks'])
+        try:
+            batch_id = kb_processing_status.get(document_id, {}).get("batch_id")
+            if batch_id and batch_id in kb_batches:
+                kb_batches[batch_id]["completed"] += 1
+        except Exception:
+            pass
         
     except Exception as e:
         logger.error(f"=== DOCUMENT PROCESSING FAILED ===")
@@ -198,6 +252,41 @@ async def process_document_async(
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         observability.track_document_processing_error(document_id, str(e))
+        # Mark failed
+        st = kb_processing_status.get(document_id)
+        if st is not None:
+            st.update({
+                "stage": "failed",
+                "progress_percent": 0.0,
+                "message": f"Processing failed: {str(e)[:120]}",
+                "error_message": str(e),
+                "completed_at": datetime.utcnow().isoformat(),
+            })
+        try:
+            batch_id = kb_processing_status.get(document_id, {}).get("batch_id")
+            if batch_id and batch_id in kb_batches:
+                kb_batches[batch_id]["failed"] += 1
+        except Exception:
+            pass
+
+@router.get("/upload/status/{document_id}")
+async def get_upload_status(document_id: str):
+    status = kb_processing_status.get(document_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Document not found in processing tracker")
+    return status
+
+@router.get("/upload/batch/{batch_id}/status")
+async def get_upload_batch_status(batch_id: str):
+    batch = kb_batches.get(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    doc_ids = batch.get("documents", [])
+    if doc_ids:
+        progress = sum(kb_processing_status.get(d, {}).get("progress_percent", 0.0) for d in doc_ids) / len(doc_ids)
+    else:
+        progress = 0.0
+    return {**batch, "overall_progress_percent": round(progress, 2)}
 
 @router.get("/", response_model=List[DocumentInfo])
 async def list_documents(

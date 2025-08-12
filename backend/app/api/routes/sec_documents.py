@@ -750,6 +750,40 @@ async def get_sec_document_library(
         )
         
         logger.info(f"Found {len(all_results)} total chunks in index")
+
+        # Fallback: supplement with direct search paging to ensure recency
+        try:
+            client = sec_service.azure_manager.search_client
+            skip = 0
+            batch_size = 1000
+            total_added = 0
+            while True:
+                direct_results = await client.search(
+                    search_text="*",
+                    select=[
+                        "id", "content", "document_id", "source", "chunk_id",
+                        "document_type", "company", "filing_date", "section_type",
+                        "processed_at", "ticker", "cik", "form_type", "accession_number",
+                        "industry", "document_url"
+                    ],
+                    top=batch_size,
+                    skip=skip,
+                    query_type="simple"
+                )
+                batch = []
+                async for r in direct_results:
+                    batch.append(dict(r))
+                if not batch:
+                    break
+                all_results.extend(batch)
+                total_added += len(batch)
+                if len(batch) < batch_size:
+                    break
+                skip += batch_size
+            if total_added:
+                logger.info(f"Supplemented library with {total_added} results from direct search")
+        except Exception as direct_err:
+            logger.warning(f"Direct search supplement failed: {direct_err}")
         
         # Step 2: Group by document_id and extract metadata from representative chunk
         documents_by_id = {}

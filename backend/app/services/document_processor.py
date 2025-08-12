@@ -171,6 +171,7 @@ class DocumentProcessor:
                         "chunk": chunk.content,
                         "title": chunk.metadata.get("title", source),
                         "text_vector": chunk.embedding,
+                        "processed_at": datetime.utcnow().isoformat(),
                     })
                     continue
 

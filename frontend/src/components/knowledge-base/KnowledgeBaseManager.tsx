@@ -482,8 +482,8 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
           </div>
         </TabsContent>
 
-        <TabsContent value="chunking" className="space-y-4">
-          <ChunkingVisualization />
+          <TabsContent value="chunking" className="space-y-4">
+            <ChunkingVisualization initialDocumentId={previewDoc?.id} index={(previewDoc?.index ?? indexFilter) as any} />
         </TabsContent>
 
         <TabsContent value="analytics" className="space-y-4">

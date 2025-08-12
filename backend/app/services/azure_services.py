@@ -637,11 +637,11 @@ class AzureServiceManager:
                         else:
                             # Fallback to generic schema
                             addl_index = SearchIndex(
-                                name=ix_name,
-                                fields=fields,
-                                vector_search=vector_search,
-                                semantic_search=semantic_search
-                            )
+                            name=ix_name,
+                            fields=fields,
+                            vector_search=vector_search,
+                            semantic_search=semantic_search
+                        )
                         self.search_index_client.create_index(addl_index)
                         logger.info(f"Successfully created index '{ix_name}'")
             except Exception as extra_err:
@@ -713,7 +713,8 @@ class AzureServiceManager:
             
             async def _search_with_client(client: AsyncSearchClient) -> List[Dict]:
                 search_start_local = time.time()
-                results_local = await client.search(
+                try:
+                    results_local = await client.search(
                     search_text=query,
                     vector_queries=[vector_query],
                     select=["id", "content", "title", "document_id", "source", "chunk_id", 
@@ -724,8 +725,18 @@ class AzureServiceManager:
                            "chunk_index", "content_type", "chunk_method", "file_size"],
                     filter=filters,
                     top=top_k,
-                    query_type="semantic",                semantic_configuration_name="default-semantic-config"
-                )
+                        query_type="semantic",                semantic_configuration_name="default-semantic-config"
+                    )
+                except Exception as sel_err:
+                    # Fallback when select fields don't match index schema
+                    logger.warning(f"Hybrid search select failed, retrying without select: {sel_err}")
+                    results_local = await client.search(
+                        search_text=query,
+                        vector_queries=[vector_query],
+                        filter=filters,
+                        top=top_k,
+                        query_type="semantic",                semantic_configuration_name="default-semantic-config"
+                    )
                 _ = time.time() - search_start_local
                 filtered: List[Dict] = []
                 async for r in results_local:
@@ -803,15 +814,22 @@ class AzureServiceManager:
             return False
     
     def _validate_document_schema(self, document: Dict) -> bool:
-        """Validate document schema before uploading to search index"""
-        required_fields = ['id', 'content']
-        for field in required_fields:
-            if field not in document or not document[field]:
-                logger.warning(f"Document missing required field: {field}")
-                return False
+        """Validate document schema before uploading to search index.
+        Supports both generic/SEC schema (id/content) and policy/claims vector schema (chunk_id/chunk).
+        """
+        # Accept either generic schema or vector schema
+        has_generic = bool(document.get('id')) and bool(document.get('content'))
+        has_vector = bool(document.get('chunk_id')) and bool(document.get('chunk'))
+        if not (has_generic or has_vector):
+            logger.warning("Document missing required fields: expected ('id' and 'content') or ('chunk_id' and 'chunk')")
+            return False
         
-        if len(document['content']) > 1000000:  # 1MB limit
-            logger.warning(f"Document content too large: {len(document['content'])} characters")
+        # Size limits per schema
+        content_length = len(document.get('content', '') or '')
+        chunk_length = len(document.get('chunk', '') or '')
+        size_to_check = content_length if has_generic else chunk_length
+        if size_to_check > 1_000_000:  # 1MB limit
+            logger.warning(f"Document content too large: {size_to_check} characters")
             return False
             
         return True
@@ -845,23 +863,40 @@ class AzureServiceManager:
         """
         try:
             client = self.get_search_client_for_index(index_name)
-            results = await client.search(
-                search_text="*",
-                select=[
-                    "id", "document_id", "source", "processed_at", "file_size", "title"
-                ],
-                top=top_k,
-            )
+            # Detect vector schema (policy/claims) vs generic/SEC
+            policy_ix = getattr(settings, 'AZURE_SEARCH_POLICY_INDEX_NAME', None)
+            claims_ix = getattr(settings, 'AZURE_SEARCH_CLAIMS_INDEX_NAME', None)
+            is_vector_schema = index_name in {policy_ix, claims_ix}
+
+            if is_vector_schema:
+                select_fields = ["chunk_id", "parent_id", "title"]
+            else:
+                select_fields = ["id", "document_id", "source", "processed_at", "file_size", "title"]
+            try:
+                results = await client.search(
+                    search_text="*",
+                    select=select_fields,
+                    top=top_k,
+                )
+            except Exception as sel_err:
+                logger.warning(f"list_unique_documents select failed for '{index_name}', retrying without select: {sel_err}")
+                results = await client.search(
+                    search_text="*",
+                    top=top_k,
+                )
             docs_by_id: Dict[str, Dict] = {}
             async for r in results:
                 rd = dict(r)
-                doc_id = rd.get("document_id") or rd.get("id")
+                # Use parent_id for vector schema; fallback to document_id/id
+                doc_id = rd.get("parent_id") if is_vector_schema else rd.get("document_id")
+                if not doc_id:
+                    doc_id = rd.get("id") or rd.get("chunk_id")
                 if not doc_id:
                     continue
                 if doc_id not in docs_by_id:
                     docs_by_id[doc_id] = {
                         "id": doc_id,
-                        "filename": rd.get("source") or rd.get("title") or doc_id,
+                        "filename": rd.get("title") or rd.get("source") or doc_id,
                         "uploadDate": rd.get("processed_at"),
                         "size": rd.get("file_size") or 0,
                     }
@@ -874,17 +909,44 @@ class AzureServiceManager:
         """Return all chunks for a given document_id from the specified index."""
         try:
             client = self.get_search_client_for_index(index_name)
-            filter_expr = f"document_id eq '{document_id}'"
-            results = await client.search(
-                search_text="*",
-                select=["id", "content", "metadata", "chunk_id", "section_type", "chunk_index", "source", "processed_at"],
-                filter=filter_expr,
-                top=top_k,
-            )
+            policy_ix = getattr(settings, 'AZURE_SEARCH_POLICY_INDEX_NAME', None)
+            claims_ix = getattr(settings, 'AZURE_SEARCH_CLAIMS_INDEX_NAME', None)
+            is_vector_schema = index_name in {policy_ix, claims_ix}
+
+            if is_vector_schema:
+                filter_expr = f"parent_id eq '{document_id}'"
+                select_fields = ["chunk_id", "parent_id", "chunk", "title"]
+            else:
+                filter_expr = f"document_id eq '{document_id}'"
+                select_fields = ["id", "content", "metadata", "chunk_id", "section_type", "chunk_index", "source", "processed_at"]
+
+            try:
+                results = await client.search(
+                    search_text="*",
+                    select=select_fields,
+                    filter=filter_expr,
+                    top=top_k,
+                )
+            except Exception as sel_err:
+                logger.warning(f"get_chunks_for_document select failed for '{index_name}', retrying without select: {sel_err}")
+                results = await client.search(
+                    search_text="*",
+                    filter=filter_expr,
+                    top=top_k,
+                )
             chunks: List[Dict] = []
             async for r in results:
                 rd = dict(r)
-                chunks.append(rd)
+                if is_vector_schema:
+                    # Normalize to include 'content' for UI compatibility
+                    normalized = {
+                        **rd,
+                        "id": rd.get("chunk_id") or rd.get("id"),
+                        "content": rd.get("chunk") or rd.get("content") or "",
+                    }
+                    chunks.append(normalized)
+                else:
+                    chunks.append(rd)
             return chunks
         except Exception as e:
             logger.error(f"Failed to get chunks for document '{document_id}' from index '{index_name}': {e}")
