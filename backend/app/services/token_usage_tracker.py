@@ -311,8 +311,8 @@ class TokenUsageTracker:
             logger.error(f"📋 Record details: {record.record_id}, operation: {record.operation_type}, tokens: {record.total_tokens}")
             import traceback
             logger.error(f"🔍 Full traceback: {traceback.format_exc()}")
-            # Re-raise to make the failure visible
-            raise
+            # Fail-soft: do not propagate error to calling request path
+            return
     
     def _get_model_key_for_pricing(self, model_identifier: str) -> str:
         """Map model identifier to pricing key"""

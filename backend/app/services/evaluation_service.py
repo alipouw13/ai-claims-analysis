@@ -24,6 +24,7 @@ from ..models.schemas import (
     EvaluationRequest, EvaluationResult, EvaluationSummary, 
     EvaluatorType, EvaluationMetric
 )
+from ..core.observability import observability
 
 logger = logging.getLogger(__name__)
 
@@ -923,17 +924,22 @@ class FoundryEvaluator:
             api_key = settings.AZURE_EVALUATION_API_KEY or settings.AZURE_OPENAI_API_KEY
             deployment = settings.AZURE_EVALUATION_MODEL_DEPLOYMENT or settings.AZURE_OPENAI_DEPLOYMENT_NAME
             
-            # Run evaluation in async subprocess for true parallelism
-            result = await run_foundry_evaluation_async(
-                evaluator_name=evaluator_class,
-                query=data["query"],
-                response=data["response"],
-                context=data["context"],
-                azure_endpoint=azure_endpoint,
-                api_key=api_key,
-                deployment=deployment,
-                api_version=settings.AZURE_OPENAI_API_VERSION
-            )
+            # Run evaluation in async subprocess for true parallelism with tracing
+            async with observability.trace_azure_ai_foundry_operation(
+                operation_type="evaluation",
+                evaluator_type=evaluator_name,
+                model=deployment
+            ):
+                result = await run_foundry_evaluation_async(
+                    evaluator_name=evaluator_class,
+                    query=data["query"],
+                    response=data["response"],
+                    context=data["context"],
+                    azure_endpoint=azure_endpoint,
+                    api_key=api_key,
+                    deployment=deployment,
+                    api_version=settings.AZURE_OPENAI_API_VERSION
+                )
             
             logger.info(f"Async subprocess evaluation successful for {evaluator_name}: {result}")
             return result

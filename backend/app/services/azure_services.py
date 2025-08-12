@@ -559,13 +559,89 @@ class AzureServiceManager:
                         logger.info(f"Index '{ix_name}' already exists")
                     except Exception:
                         logger.info(f"Creating additional index '{ix_name}' for policy/claims separation")
-                        # Reuse same schema/vector/semantic configuration
-                        addl_index = SearchIndex(
-                            name=ix_name,
-                            fields=fields,
-                            vector_search=vector_search,
-                            semantic_search=semantic_search
-                        )
+                        # Tailor schema for policy vs. claims documents
+                        if ix_name == policy_ix:
+                            policy_fields = [
+                                SimpleField(name="id", type=SearchFieldDataType.String, key=True),
+                                SearchableField(name="content", type=SearchFieldDataType.String),
+                                SearchableField(name="title", type=SearchFieldDataType.String),
+                                SimpleField(name="document_id", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="source", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="chunk_id", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="section_type", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="page_number", type=SearchFieldDataType.Int32, filterable=True),
+                                SimpleField(name="processed_at", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="citation_info", type=SearchFieldDataType.String),
+                                # Policy-specific metadata (all optional, filterable)
+                                SimpleField(name="policy_number", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="insured_name", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="line_of_business", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="state", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="effective_date", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="expiration_date", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="deductible", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="coverage_limits", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="exclusions", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="endorsements", type=SearchFieldDataType.String, filterable=True),
+                                # Vector field
+                                SearchField(
+                                    name="content_vector",
+                                    type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+                                    searchable=True,
+                                    vector_search_dimensions=1536,
+                                    vector_search_profile_name="default-vector-profile"
+                                )
+                            ]
+                            addl_index = SearchIndex(
+                                name=ix_name,
+                                fields=policy_fields,
+                                vector_search=vector_search,
+                                semantic_search=semantic_search
+                            )
+                        elif ix_name == claims_ix:
+                            claims_fields = [
+                                SimpleField(name="id", type=SearchFieldDataType.String, key=True),
+                                SearchableField(name="content", type=SearchFieldDataType.String),
+                                SearchableField(name="title", type=SearchFieldDataType.String),
+                                SimpleField(name="document_id", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="source", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="chunk_id", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="section_type", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="page_number", type=SearchFieldDataType.Int32, filterable=True),
+                                SimpleField(name="processed_at", type=SearchFieldDataType.String, filterable=True),
+                                # Claims-specific metadata
+                                SimpleField(name="claim_id", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="policy_number", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="insured_name", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="date_of_loss", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="loss_cause", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="location", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="coverage_decision", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="settlement_summary", type=SearchFieldDataType.String, filterable=True),
+                                SimpleField(name="payout_amount", type=SearchFieldDataType.Double, filterable=True),
+                                # Vector field
+                                SearchField(
+                                    name="content_vector",
+                                    type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+                                    searchable=True,
+                                    vector_search_dimensions=1536,
+                                    vector_search_profile_name="default-vector-profile"
+                                )
+                            ]
+                            addl_index = SearchIndex(
+                                name=ix_name,
+                                fields=claims_fields,
+                                vector_search=vector_search,
+                                semantic_search=semantic_search
+                            )
+                        else:
+                            # Fallback to generic schema
+                            addl_index = SearchIndex(
+                                name=ix_name,
+                                fields=fields,
+                                vector_search=vector_search,
+                                semantic_search=semantic_search
+                            )
                         self.search_index_client.create_index(addl_index)
                         logger.info(f"Successfully created index '{ix_name}'")
             except Exception as extra_err:

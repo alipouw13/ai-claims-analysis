@@ -117,10 +117,15 @@ class DocumentProcessor:
             text_for_chunking = extracted_content.get("content", "")
             if domain == 'policy':
                 for c in chunk_policy_text(text_for_chunking):
-                    chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata={**(metadata or {}), **financial_info, **c["metadata"]}))
+                    # Compute confidence score per chunk (best-practice: content understanding confidence)
+                    confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
+                    chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
+                    chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
             else:
                 for c in chunk_claim_text(text_for_chunking):
-                    chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata={**(metadata or {}), **financial_info, **c["metadata"]}))
+                    confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
+                    chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
+                    chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
             if not chunks:
                 chunks = await self._create_basic_chunks(text_for_chunking, document_id, {**(metadata or {}), **financial_info})
             logger.info(f"Step 5 COMPLETE: Created {len(chunks)} {domain} chunks")
@@ -155,6 +160,21 @@ class DocumentProcessor:
             # Convert chunks to search index format and add to knowledge base
             search_documents = []
             for chunk in chunks:
+                # If targeting a specific policy index schema, adapt field names
+                if target_index_name and target_index_name in {
+                    getattr(settings, 'AZURE_SEARCH_POLICY_INDEX_NAME', None),
+                    getattr(settings, 'AZURE_SEARCH_CLAIMS_INDEX_NAME', None),
+                }:
+                    search_documents.append({
+                        "chunk_id": f"{document_id}_{chunk.chunk_id}",
+                        "parent_id": document_id,
+                        "chunk": chunk.content,
+                        "title": chunk.metadata.get("title", source),
+                        "text_vector": chunk.embedding,
+                    })
+                    continue
+
+                # Default schema for generic/SEC or claims
                 search_doc = {
                     "id": f"{document_id}_{chunk.chunk_id}",
                     "content": chunk.content,
@@ -162,16 +182,50 @@ class DocumentProcessor:
                     "document_id": document_id,
                     "source": source,
                     "chunk_id": chunk.chunk_id,
-                    "document_type": chunk.metadata.get("document_type", "financial"),
+                    # Normalize type/section for policy vs claims vs SEC
+                    "document_type": chunk.metadata.get(
+                        "document_type",
+                        ("claim" if (metadata or {}).get("is_claim") else "policy")
+                    ),
                     "company": chunk.metadata.get("company_name", ""),
                     "filing_date": chunk.metadata.get("filing_date", ""),
-                    "section_type": chunk.metadata.get("section_type", "general"),
+                    "section_type": chunk.metadata.get(
+                        "section_type",
+                        ("claim" if (metadata or {}).get("is_claim") else "policy")
+                    ),
                     "page_number": chunk.metadata.get("page_number", 1),
                     "content_vector": chunk.embedding,
                     "credibility_score": chunk.metadata.get("credibility_score", 0.8),
+                    "confidence_score": chunk.metadata.get("confidence_score", 0.7),
                     "processed_at": datetime.utcnow().isoformat(),
                     "citation_info": json.dumps(chunk.citation_info or {})
                 }
+                # Enrich with domain-specific fields
+                if (metadata or {}).get("is_claim"):
+                    search_doc.update({
+                        "claim_id": (metadata or {}).get("claim_id"),
+                        "policy_number": (metadata or {}).get("policy_number"),
+                        "insured_name": (metadata or {}).get("insured_name"),
+                        "date_of_loss": (metadata or {}).get("date_of_loss"),
+                        "loss_cause": (metadata or {}).get("loss_cause"),
+                        "location": (metadata or {}).get("location"),
+                        "coverage_decision": (metadata or {}).get("coverage_decision"),
+                        "settlement_summary": (metadata or {}).get("settlement_summary"),
+                        "payout_amount": (metadata or {}).get("payout_amount"),
+                    })
+                else:
+                    search_doc.update({
+                        "policy_number": (metadata or {}).get("policy_number"),
+                        "insured_name": (metadata or {}).get("insured_name"),
+                        "line_of_business": (metadata or {}).get("line_of_business"),
+                        "state": (metadata or {}).get("state"),
+                        "effective_date": (metadata or {}).get("effective_date"),
+                        "expiration_date": (metadata or {}).get("expiration_date"),
+                        "deductible": (metadata or {}).get("deductible"),
+                        "coverage_limits": (metadata or {}).get("coverage_limits"),
+                        "exclusions": (metadata or {}).get("exclusions"),
+                        "endorsements": (metadata or {}).get("endorsements"),
+                    })
                 search_documents.append(search_doc)
             logger.info(f"Step 7 COMPLETE: Prepared {len(search_documents)} search documents")
             
@@ -220,8 +274,11 @@ class DocumentProcessor:
                 }
             }
             
+            # Track completion with accurate processing stats
             observability.track_document_processing_complete(
-                document_id, len(chunks), len(key_metrics)
+                document_id,
+                chunks_created=len(chunks),
+                processing_time=0.0
             )
             
             logger.info(f"=== DOCUMENT PROCESSING COMPLETE ===")
@@ -238,6 +295,46 @@ class DocumentProcessor:
             logger.error(f"Error processing document from {source}: {e}")
             observability.track_document_processing_error(source, str(e))
             raise
+
+    def _compute_chunk_confidence(self, content: str, chunk_metadata: Dict[str, Any]) -> float:
+        """Compute a heuristic content-understanding confidence score for a chunk.
+
+        Inspired by the Content Processing Solution Accelerator's confidence evaluator
+        approach, this combines simple signals:
+        - Length and structure sufficiency
+        - Financial term density
+        - Numeric density and presence of tables/sections
+        Returns a score in [0.0, 1.0].
+        """
+        try:
+            if not content:
+                return 0.3
+
+            score = 0.5
+            length = len(content)
+            if length > 1000:
+                score += 0.2
+            elif length < 120:
+                score -= 0.15
+
+            financial_terms = [
+                "revenue", "income", "assets", "liabilities", "cash flow",
+                "operating", "net", "gaap", "fasb", "md&a", "ebitda",
+            ]
+            term_hits = sum(1 for t in financial_terms if t in content.lower())
+            score += min(0.2, term_hits * 0.03)
+
+            digits = sum(ch.isdigit() for ch in content)
+            digit_ratio = digits / max(1, length)
+            if digit_ratio > 0.12:
+                score += 0.1
+
+            if chunk_metadata.get("section_type") in {"financial_statements", "management_discussion", "risk_factors"}:
+                score += 0.05
+
+            return max(0.0, min(1.0, score))
+        except Exception:
+            return 0.6
     
     def _initialize_section_patterns(self) -> Dict[str, List[str]]:
         """Initialize patterns for identifying financial document sections"""

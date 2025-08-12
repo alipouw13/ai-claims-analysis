@@ -104,6 +104,70 @@ class AzureAIAgentService:
             logger.warning(f"Could not initialize tools: {e}")
         
         return tools
+
+    async def process_chat_request(
+        self,
+        message: str,
+        session_id: str,
+        model: str,
+        temperature: float = 0.1,
+        exercise_type: str = None,
+        embedding_model: str = None
+    ) -> Dict[str, Any]:
+        """Handle simple chat requests by delegating to Azure AI Agents.
+
+        Creates or reuses a lightweight content-generation agent and a thread,
+        sends the message, and returns a response with optional citations list.
+        """
+        try:
+            # Choose or create a generic chat/content agent
+            deployment_name = self._extract_deployment_name(model) if hasattr(self, '_extract_deployment_name') else model
+            agent = await self.find_or_create_agent(
+                agent_name="Chat_Content_Agent",
+                instructions=(
+                    "You are a helpful financial assistant. Answer clearly and concisely. "
+                    "Cite sources when provided in context."
+                ),
+                model_deployment=deployment_name
+            )
+
+            # Create a new thread and run conversation
+            thread = self.client.agents.threads.create()
+            thread_id = thread.id
+
+            run_result = await self.run_agent_conversation(
+                agent_id=agent.id,
+                thread_id=thread_id,
+                message=message,
+                context={
+                    "exercise_type": exercise_type,
+                    "embedding_model": embedding_model,
+                    "session_id": session_id,
+                }
+            )
+
+            # Map run result to chat response shape used by chat route
+            response_text = run_result.response or ""
+            citations: List[Dict[str, Any]] = []
+            for src in run_result.sources or []:
+                # Normalize potential file citations to a common citation dict
+                citations.append({
+                    "id": src.get("file_id", "cite_1"),
+                    "content": src.get("quote", ""),
+                    "source": src.get("type", "agent"),
+                    "document_id": src.get("file_id", ""),
+                    "document_title": src.get("file_id", ""),
+                    "page_number": 0,
+                    "section_title": "",
+                    "confidence": "medium",
+                    "url": ""
+                })
+
+            return {"response": response_text, "citations": citations}
+        except Exception as e:
+            logger.warning(f"process_chat_request failed: {e}")
+            # Surface a minimal fallback; chat route has its own fallback as well
+            return {"response": str(message), "citations": []}
     
     async def create_qa_agent(self, name: str, instructions: str, model_deployment: str = None) -> Agent:
         """Create a QA agent for Exercise 2 functionality - now uses find_or_create pattern"""

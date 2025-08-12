@@ -112,9 +112,10 @@ export interface VerifiedSource {
 
 interface QAContainerProps {
   modelSettings: ModelSettings;
+  domain?: 'insurance' | 'banking';
 }
 
-export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings }) => {
+export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain = 'insurance' }) => {
   const [questions, setQuestions] = useState<QAQuestion[]>([]);
   const [riskPreset, setRiskPreset] = useState<string>("");
   const [answers, setAnswers] = useState<QAAnswer[]>([]);
@@ -335,8 +336,9 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings }) => {
         : (selectedModel?.model_name || evaluationModel);
 
       const data = await (async () => {
-        // Call the insurance-specific backend route
-        const res = await fetch(`/api/v1/qa/insurance/ask`, {
+        // Route based on domain
+        const qaPath = domain === 'banking' ? '/api/v1/qa/ask' : '/api/v1/qa/insurance/ask';
+        const res = await fetch(qaPath, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -420,21 +422,38 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings }) => {
     }
   };
 
-  // Simple preset panel
-  const riskPrompts = [
-    {
-      label: 'Coverage exclusions for claim',
-      text: 'You are an insurance risk analyst. Use both policy and claims indexes to: (1) identify relevant policy sections, (2) list applicable exclusions with citations, (3) assess whether the claim facts are excluded. Provide citations for both policy chunks and claim chunks.',
-    },
-    {
-      label: 'Claim settlement reasonableness',
-      text: 'You are an underwriter. Compare policy coverage terms with the claim loss description and notes. Determine likely coverage and a reasonable settlement range. Cite policy and claim text that supports your recommendation.',
-    },
-    {
-      label: 'Policy limits vs claimed loss',
-      text: 'Analyze policy limits/deductibles and the claimed loss. Determine if limits are exceeded, and summarize the applicable limit and deductible clauses with citations.',
-    },
-  ];
+  // Domain-specific preset panel
+  const riskPrompts = (
+    domain === 'banking'
+      ? [
+          {
+            label: '10-K: Summarize key risk factors',
+            text: 'You are a financial analyst. Using 10-K filings, summarize the top risk factors with citations to specific sections and pages. Provide a concise list with supporting quotes.',
+          },
+          {
+            label: '10-K: Revenue trends (3 years)',
+            text: 'Analyze revenue trends over the last three fiscal years from 10-K filings. Provide figures and cite MD&A and financial statements sections appropriately.',
+          },
+          {
+            label: '10-K: Management outlook',
+            text: 'Extract and summarize management’s latest outlook from the MD&A section of the 10-K, citing the exact passages.',
+          },
+        ]
+      : [
+          {
+            label: 'Coverage exclusions for claim',
+            text: 'You are an insurance risk analyst. Use both policy and claims indexes to: (1) identify relevant policy sections, (2) list applicable exclusions with citations, (3) assess whether the claim facts are excluded. Provide citations for both policy chunks and claim chunks.',
+          },
+          {
+            label: 'Claim settlement reasonableness',
+            text: 'You are an underwriter. Compare policy coverage terms with the claim loss description and notes. Determine likely coverage and a reasonable settlement range. Cite policy and claim text that supports your recommendation.',
+          },
+          {
+            label: 'Policy limits vs claimed loss',
+            text: 'Analyze policy limits/deductibles and the claimed loss. Determine if limits are exceeded, and summarize the applicable limit and deductible clauses with citations.',
+          },
+        ]
+  );
 
   const handleDecomposeQuestion = async (question: string) => {
     try {
@@ -575,10 +594,10 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings }) => {
       <ResizablePanelGroup direction="horizontal" className="min-h-screen">
         <ResizablePanel defaultSize={75} minSize={50}>
           <div className="flex flex-col h-full">
-            {/* Risk Analysis Presets */}
+            {/* Domain-specific Presets */}
             <div className="px-4 pt-4">
               <div className="border rounded p-3 text-xs flex items-center gap-2 flex-wrap">
-                <span className="text-muted-foreground">Risk Analysis Presets:</span>
+                <span className="text-muted-foreground">{domain === 'banking' ? 'Financial Analysis Presets:' : 'Risk Analysis Presets:'}</span>
                 {riskPrompts.map((p) => (
                   <button
                     key={p.label}

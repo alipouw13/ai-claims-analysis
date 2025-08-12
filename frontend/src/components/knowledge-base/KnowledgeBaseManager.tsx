@@ -40,6 +40,7 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
   const [previewDoc, setPreviewDoc] = useState<{ id: string; index: 'policy' | 'claims' } | null>(null);
   const [previewChunks, setPreviewChunks] = useState<any[]>([]);
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
+  const [inlineNotice, setInlineNotice] = useState<{ type: 'success' | 'error'; message: string; latestDocId?: string } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -100,6 +101,12 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
 
       console.log('Upload successful:', uploadResponse);
       setSelectedFiles(null);
+      // Notify success with in-app banner and CTA to open chunk visualization for the new doc
+      setInlineNotice({
+        type: 'success',
+        message: `${filesArray.length} file(s) uploaded. Click View Analysis to open Chunk Visualization.`,
+        latestDocId: (uploadResponse && uploadResponse[0] && uploadResponse[0].document_id) || undefined,
+      });
       
       const interval = setInterval(() => {
         setUploadProgress(prev => {
@@ -240,6 +247,18 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
               <CardDescription className="text-xs">Drag and drop files here, or click to browse. Supports PDF, DOC, DOCX files up to 10MB.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {inlineNotice && (
+                <div className={`p-3 rounded border ${inlineNotice.type==='success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">{inlineNotice.message}</span>
+                    {inlineNotice.latestDocId && (
+                      <Button size="sm" variant="outline" onClick={() => { setActiveTab('chunking'); setPreviewDoc({ id: inlineNotice.latestDocId!, index: (role==='customer' ? 'claims':'policy') }); setInlineNotice(null); }}>
+                        View Analysis
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="grid w-full max-w-sm items-center gap-1.5">
                 <Label htmlFor="documents">Select {role === 'customer' ? 'Claim' : 'Policy'} Documents</Label>
                 <Input
@@ -278,11 +297,10 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
                 </div>
               )}
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <Button onClick={handleFileUpload} disabled={!selectedFiles || selectedFiles.length === 0 || isUploading}>
-                  {isUploading ? 'Uploading…' : 'Browse Files'}
+                  {isUploading ? 'Uploading…' : (selectedFiles && selectedFiles.length > 0 ? 'Upload' : 'Select Files')}
                 </Button>
-                <Button variant="outline" onClick={loadData} disabled={loading}>Refresh</Button>
               </div>
             </CardContent>
           </Card>

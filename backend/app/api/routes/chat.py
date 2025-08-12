@@ -45,7 +45,7 @@ async def chat(
         user_id=x_user_id,
         request_text=request.message,
         temperature=request.temperature,
-        exercise_type=request.exercise_type.value if request.exercise_type else None
+        exercise_type=request.exercise_type if request.exercise_type else None
     )
     
     try:
@@ -57,7 +57,7 @@ async def chat(
         ) as span:
             
             observability.track_request("chat", session_id=session_id)
-            logger.info(f"Chat request received for session {session_id}, exercise: {request.exercise_type.value}")
+            logger.info(f"Chat request received for session {session_id}, exercise: {request.exercise_type or 'unknown'}")
             
             logger.info("Initializing Azure services...")
             azure_manager = AzureServiceManager()
@@ -205,7 +205,7 @@ The system is configured to use {request.chat_model} for generation and {request
                 #     response_time=response_time,
                 #     financial_context={
                 #         "user_id": x_user_id,
-                #         "exercise_type": request.exercise_type.value,
+                #         "exercise_type": request.exercise_type,
                 #         "embedding_model": request.embedding_model.value
                 #     }
                 # )
@@ -250,7 +250,7 @@ The system is configured to use {request.chat_model} for generation and {request
                 "timestamp": datetime.now().isoformat(),
                 "citations": [citation.dict() for citation in citations],
                 "metadata": {
-                    "exercise_type": request.exercise_type.value,
+                    "exercise_type": request.exercise_type,
                     "model_used": request.chat_model,
                     "embedding_model": request.embedding_model,
                     "temperature": request.temperature,
@@ -270,7 +270,7 @@ The system is configured to use {request.chat_model} for generation and {request
                 session_id=session_id,
                 citations=citations,
                 metadata={
-                    "exercise_type": request.exercise_type.value,
+                    "exercise_type": request.exercise_type,
                     "model_used": request.chat_model,
                     "embedding_model": request.embedding_model,
                     "temperature": request.temperature,
@@ -293,7 +293,7 @@ The system is configured to use {request.chat_model} for generation and {request
                 http_status_code=200,
                 metadata={
                     "citations_count": len(citations),
-                    "exercise_type": request.exercise_type.value if request.exercise_type else None,
+                    "exercise_type": request.exercise_type if request.exercise_type else None,
                     "response_length": len(response_text)
                 }
             )
