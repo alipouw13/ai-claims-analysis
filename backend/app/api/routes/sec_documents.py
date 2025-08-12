@@ -735,150 +735,87 @@ async def get_sec_document_library(
 ):
     """
     Get the SEC document library from the vector store.
-    First retrieves all unique document_ids, then extracts metadata from a representative chunk,
-    then applies company/form_type filters.
+    Mirror the analytics tab: page through index with direct simple search,
+    then group results by document_id and aggregate counts.
     """
     try:
-        logger.info(f"Getting SEC document library - company: {company}, form_type: {form_type}")
-        
-        # Step 1: Get ALL documents from Azure Search (no filters yet)
-        # Use a large top_k to get all documents
-        all_results = await sec_service.azure_manager.hybrid_search(
-            query="*",
-            top_k=5000,  # Large number to get all documents
-            filters=None  # No filters initially
-        )
-        
-        logger.info(f"Found {len(all_results)} total chunks in index")
+        logger.info(f"Getting SEC document library - analytics style")
 
-        # Fallback: supplement with direct search paging to ensure recency
-        try:
-            client = sec_service.azure_manager.search_client
-            skip = 0
-            batch_size = 1000
-            total_added = 0
-            while True:
-                direct_results = await client.search(
-                    search_text="*",
-                    select=[
-                        "id", "content", "document_id", "source", "chunk_id",
-                        "document_type", "company", "filing_date", "section_type",
-                        "processed_at", "ticker", "cik", "form_type", "accession_number",
-                        "industry", "document_url"
-                    ],
-                    top=batch_size,
-                    skip=skip,
-                    query_type="simple"
-                )
-                batch = []
-                async for r in direct_results:
-                    batch.append(dict(r))
-                if not batch:
-                    break
-                all_results.extend(batch)
-                total_added += len(batch)
-                if len(batch) < batch_size:
-                    break
-                skip += batch_size
-            if total_added:
-                logger.info(f"Supplemented library with {total_added} results from direct search")
-        except Exception as direct_err:
-            logger.warning(f"Direct search supplement failed: {direct_err}")
-        
-        # Step 2: Group by document_id and extract metadata from representative chunk
-        documents_by_id = {}
-        total_chunks = len(all_results)
-        
-        for result in all_results:
-            doc_id = result.get('document_id', '')
+        # 1) Direct paged search over the index (no vector queries)
+        all_results: List[Dict[str, Any]] = []
+        skip = 0
+        batch_size = 1000
+        client = sec_service.azure_manager.search_client
+        while True:
+            # Avoid selecting fields that may not exist ('id'); pick analytics-safe fields
+            search_results = await client.search(
+                search_text="*",
+                select=[
+                    "content", "document_id", "source", "chunk_id",
+                    "company", "filing_date", "form_type", "processed_at",
+                    "ticker", "cik", "industry", "document_url", "section_type", "accession_number"
+                ],
+                top=batch_size,
+                skip=skip,
+                query_type="simple"
+            )
+            batch: List[Dict[str, Any]] = []
+            async for r in search_results:
+                batch.append(dict(r))
+            if not batch:
+                break
+            all_results.extend(batch)
+            if len(batch) < batch_size:
+                break
+            skip += batch_size
+
+        # 2) Group by document_id and aggregate
+        docs_by_id: Dict[str, Dict[str, Any]] = {}
+        for r in all_results:
+            doc_id = r.get("document_id") or r.get("chunk_id")
             if not doc_id:
                 continue
-                
-            if doc_id not in documents_by_id:
-                # Use first chunk as representative for this document
-                documents_by_id[doc_id] = {
+            if doc_id not in docs_by_id:
+                docs_by_id[doc_id] = {
                     "document_id": doc_id,
-                    "company": result.get('company', 'Unknown Company'),
-                    "ticker": result.get('ticker', 'N/A'),
-                    "form_type": result.get('form_type', 'Unknown'),
-                    "filing_date": result.get('filing_date', ''),
-                    "accession_number": result.get('accession_number', ''),
+                    "company": r.get("company", "Unknown Company"),
+                    "ticker": r.get("ticker", "N/A"),
+                    "form_type": r.get("form_type", "Unknown"),
+                    "filing_date": r.get("filing_date", ""),
+                    "accession_number": r.get("accession_number", ""),
                     "chunk_count": 0,
-                    "processed_at": result.get('processed_at', ''),
-                    "source": result.get('source', ''),
-                    "cik": result.get('cik', ''),
-                    "industry": result.get('industry', ''),
-                    "document_url": result.get('document_url', ''),
-                    "section_type": result.get('section_type', '')
+                    "processed_at": r.get("processed_at", ""),
+                    "source": r.get("source", ""),
+                    "cik": r.get("cik", ""),
+                    "industry": r.get("industry", ""),
+                    "document_url": r.get("document_url", ""),
+                    "section_type": r.get("section_type", "")
                 }
-            
-            # Count chunks for this document
-            documents_by_id[doc_id]["chunk_count"] += 1
-        
-        all_documents = list(documents_by_id.values())
-        logger.info(f"Found {len(all_documents)} unique documents before filtering")
-        
-        # Step 3: Apply filters based on extracted metadata
-        filtered_documents = all_documents
-        
-        if company:
-            # Filter by company name (case-insensitive partial match) and try to resolve to ticker
-            company_lower = company.lower()
-            # Attempt to resolve provided text to canonical ticker for better matching (e.g., 'MSFT', 'PNC')
-            try:
-                resolved = sec_service._resolve_ticker_and_company(company)
-                resolved_ticker = resolved[0] if resolved else None
-            except Exception:
-                resolved_ticker = None
+            docs_by_id[doc_id]["chunk_count"] += 1
 
-            filtered_documents = [
-                doc for doc in filtered_documents 
-                if company_lower in doc.get("company", "").lower() or 
-                   company_lower in doc.get("ticker", "").lower() or 
-                   (resolved_ticker and doc.get("ticker", "").upper() == resolved_ticker.upper())
-            ]
-            logger.info(f"After company filter '{company}': {len(filtered_documents)} documents")
-        
+        documents = list(docs_by_id.values())
+
+        # 3) Apply filters
+        if company:
+            company_lower = company.lower()
+            documents = [d for d in documents if company_lower in (d.get("company", "") or "").lower() or company_lower in (d.get("ticker", "") or "").lower()]
         if form_type:
-            # Filter by form type (exact match)
-            filtered_documents = [
-                doc for doc in filtered_documents 
-                if doc.get("form_type", "").upper() == form_type.upper()
-            ]
-            logger.info(f"After form_type filter '{form_type}': {len(filtered_documents)} documents")
-        
-        # Step 4: Apply limit and sort by filing_date (most recent first)
-        try:
-            # Sort by filing_date, handling empty dates
-            filtered_documents = sorted(
-                filtered_documents, 
-                key=lambda x: x.get("filing_date", "1900-01-01"), 
-                reverse=True
-            )
-        except Exception as e:
-            logger.warning(f"Could not sort by filing_date: {e}")
-        
-        # Apply limit
-        limited_documents = filtered_documents[:limit]
-        
-        # Step 5: Get unique companies and form types for filter dropdowns
-        all_companies = list(set(
-            doc["company"] for doc in all_documents 
-            if doc["company"] and doc["company"] != "Unknown Company"
-        ))
-        all_form_types = list(set(
-            doc["form_type"] for doc in all_documents 
-            if doc["form_type"] and doc["form_type"] != "Unknown"
-        ))
-        
-        logger.info(f"Returning {len(limited_documents)} documents after all filtering")
-        
+            documents = [d for d in documents if (d.get("form_type", "") or "").upper() == form_type.upper()]
+
+        # 4) Sort and limit
+        documents.sort(key=lambda x: x.get("filing_date", "1900-01-01"), reverse=True)
+        limited = documents[: (limit or 100)]
+
+        # 5) Build filter facets
+        companies = sorted({d.get("company") for d in docs_by_id.values() if d.get("company")})
+        form_types = sorted({d.get("form_type") for d in docs_by_id.values() if d.get("form_type")})
+
         return SECDocumentLibraryResponse(
-            documents=limited_documents,
-            total_count=len(filtered_documents),  # Total after filtering, before limit
-            total_chunks=sum(doc["chunk_count"] for doc in limited_documents),
-            companies=sorted(all_companies),
-            form_types=sorted(all_form_types)
+            documents=limited,
+            total_count=len(documents),
+            total_chunks=sum(d.get("chunk_count", 0) for d in documents),
+            companies=companies,
+            form_types=form_types,
         )
         
     except Exception as e:

@@ -769,7 +769,7 @@ class AzureServiceManager:
                 filtered_results = await _search_with_client(self.search_client)
             
             elapsed_time = time.time() - start_time
-            logger.debug(f"✅ [Thread-{thread_id}] Hybrid search completed in {elapsed_time:.2f}s (embedding: {search_start - start_time:.2f}s, search: {search_time:.2f}s, found: {len(filtered_results)} results)")
+            logger.debug(f"✅ [Thread-{thread_id}] Hybrid search completed in {elapsed_time:.2f}s, found: {len(filtered_results)} results")
             
             return filtered_results
         except Exception as e:
