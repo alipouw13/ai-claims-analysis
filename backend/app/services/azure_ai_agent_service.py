@@ -166,8 +166,27 @@ class AzureAIAgentService:
             return {"response": response_text, "citations": citations}
         except Exception as e:
             logger.warning(f"process_chat_request failed: {e}")
-            # Surface a minimal fallback; chat route has its own fallback as well
-            return {"response": str(message), "citations": []}
+            # Fallback: directly call Azure OpenAI deployment to generate a reply
+            try:
+                from app.services.azure_services import AzureServiceManager
+                azure_manager = AzureServiceManager()
+                await azure_manager.initialize()
+
+                deployment = self._extract_deployment_name(model) if hasattr(self, '_extract_deployment_name') else model
+                resp = await azure_manager.openai_client.chat.completions.create(
+                    model=deployment,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful financial assistant. Provide concise, accurate responses."},
+                        {"role": "user", "content": message},
+                    ],
+                    temperature=temperature or 0.1,
+                    max_tokens=400,
+                )
+                text = resp.choices[0].message.content if resp and resp.choices else "I'm here, but couldn't generate a response. Please try again."
+                return {"response": text, "citations": []}
+            except Exception as fallback_err:
+                logger.error(f"Direct OpenAI fallback failed: {fallback_err}")
+                return {"response": "Sorry, I couldn't process your request right now. Please try again in a moment.", "citations": []}
     
     async def create_qa_agent(self, name: str, instructions: str, model_deployment: str = None) -> Agent:
         """Create a QA agent for Exercise 2 functionality - now uses find_or_create pattern"""

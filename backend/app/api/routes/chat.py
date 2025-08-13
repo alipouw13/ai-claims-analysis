@@ -337,17 +337,19 @@ async def list_sessions(user_id: Optional[str] = None, limit: int = 50):
         database = azure_service.cosmos_client.get_database_client(settings.AZURE_COSMOS_DATABASE_NAME)
         container = database.get_container_client(settings.AZURE_COSMOS_CONTAINER_NAME)
         
-        query = "SELECT c.id, c.created_at, c.updated_at, ARRAY_LENGTH(c.messages) as message_count FROM c ORDER BY c.updated_at DESC"
+        query = "SELECT c.id, c.created_at, c.updated_at, ARRAY_LENGTH(c.messages) as message_count, c.total_tokens FROM c ORDER BY c.updated_at DESC"
         items = list(container.query_items(query=query, enable_cross_partition_query=True, max_item_count=limit))
         
         sessions = []
         for item in items:
             sessions.append(SessionInfo(
-                session_id=item["id"],
+                session_id=item.get("id"),
                 created_at=item.get("created_at"),
-                updated_at=item.get("updated_at"),
+                last_activity=item.get("updated_at") or item.get("created_at"),
                 message_count=item.get("message_count", 0),
-                user_id=user_id
+                total_tokens=item.get("total_tokens", 0),
+                user_id=user_id,
+                metadata={}
             ))
         
         return sessions

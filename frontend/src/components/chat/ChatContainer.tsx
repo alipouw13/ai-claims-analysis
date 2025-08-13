@@ -264,8 +264,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({ modelSettings, rol
   return (
     <div className="flex bg-background">
       <ResizablePanelGroup direction="horizontal" className="w-full min-h-[60vh]">
-        <ResizablePanel defaultSize={75} minSize={50}>
-          <div className="flex flex-col h-full border rounded-md bg-card">
+        <ResizablePanel defaultSize={100} minSize={100}>
+          <div className="flex flex-col h-full border rounded-md bg-card w-full">
             
             <ScrollArea className="flex-1 p-4">
               <MessageList
@@ -297,63 +297,11 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({ modelSettings, rol
               <MessageInput
                 onSendMessage={handleSendMessage}
                 disabled={isLoading}
-                placeholder="Ask about financial documents..."
+                placeholder={domain === 'insurance' ? 'Ask about policy and claims documents...' : 'Ask about financial documents...'}
               />
             </div>
           </div>
         </ResizablePanel>
-        
-        {/* Right-side panel for sample questions (plus optional panels) */}
-        <>
-          <ResizableHandle />
-          <ResizablePanel defaultSize={30} minSize={20} maxSize={40}>
-            <div className="flex flex-col h-full p-4 gap-4 border rounded-md bg-card">
-              <div>
-                <div className="text-sm text-muted-foreground mb-2">Sample Questions with Citations</div>
-                <div className="space-y-2">
-                  {sampleQuestions.map((q, i) => (
-                    <div
-                      key={i}
-                      className="border rounded-md p-3 hover:bg-muted cursor-pointer"
-                      onClick={() => handleSendMessage(q.title)}
-                    >
-                      <div className="text-sm font-medium">{q.title}</div>
-                      {q.subtitle && <div className="text-xs text-muted-foreground mt-1">{q.subtitle}</div>}
-                      {q.tags && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {q.tags.map((t) => (
-                            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground">
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {(showCitationPanel || showSessionHistory) && (
-                <div className="space-y-4">
-                  <ChatAgentServiceStatus isVisible={true} />
-                  {showCitationPanel && (
-                    <CitationPanel citations={selectedCitations} onClose={() => setShowCitationPanel(false)} />
-                  )}
-                  {showSessionHistory && (
-                    <SessionHistory
-                      sessions={sessions}
-                      currentSessionId={currentSessionId}
-                      onSessionSelect={handleSessionSelect}
-                      onNewSession={handleNewSession}
-                      onDeleteSession={handleDeleteSession}
-                      onClose={() => setShowSessionHistory(false)}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          </ResizablePanel>
-        </>
       </ResizablePanelGroup>
     </div>
   );

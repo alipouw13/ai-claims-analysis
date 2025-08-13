@@ -34,6 +34,8 @@ logging.getLogger("azure.identity").setLevel(logging.WARNING)
 from app.core.config import settings
 from app.api.routes import knowledge_base, chat, admin, documents, qa, sec_documents, deployments, evaluation, workflows
 from app.services.azure_services import AzureServiceManager
+from app.services.azure_ai_agent_service import AzureAIAgentService
+from app.services.bootstrap_vectorization import bootstrap_policy_claims_vectorization
 from app.core.observability import observability, setup_fastapi_instrumentation
 from app.core.tracing import setup_ai_foundry_tracing
 # Temporarily disable evaluation due to package conflicts
@@ -61,6 +63,11 @@ async def lifespan(app: FastAPI):
         azure_manager = AzureServiceManager()
         await azure_manager.initialize()
         app.state.azure_manager = azure_manager
+        # Kick off best-effort bootstrap vectorization of sample policies/claims
+        try:
+            asyncio.create_task(bootstrap_policy_claims_vectorization(azure_manager))
+        except Exception as boot_err:
+            logger.warning(f"Bootstrap vectorization task failed to schedule: {boot_err}")
         
         if hasattr(azure_manager, 'openai_client'):
             # Temporarily disable evaluation due to package conflicts
@@ -70,6 +77,23 @@ async def lifespan(app: FastAPI):
             # )
             logger.info("Evaluation framework disabled due to package conflicts")
         
+        # Warm up Azure AI Agents: ensure a default agent exists to avoid 404 at runtime
+        try:
+            from app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
+            from app.services.multi_agent_orchestrator import MultiAgentOrchestrator
+            kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
+            orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
+            agent_service: AzureAIAgentService = await orchestrator._get_azure_ai_agent_service()
+            deployment_name = getattr(settings, 'AZURE_OPENAI_CHAT_DEPLOYMENT_NAME', 'gpt-4.1-mini')
+            await agent_service.find_or_create_agent(
+                agent_name="Chat_Content_Agent",
+                instructions="You are a helpful financial assistant.",
+                model_deployment=deployment_name,
+            )
+            logger.info("Azure AI Agent warm-up completed")
+        except Exception as warm_err:
+            logger.warning(f"Agent warm-up failed (will fall back at runtime): {warm_err}")
+
         logger.info("Azure services initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}")
