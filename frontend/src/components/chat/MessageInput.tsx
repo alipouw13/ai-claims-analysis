@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { apiService } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
@@ -17,6 +18,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 }) => {
   const [message, setMessage] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const adjustTextareaHeight = () => {
@@ -47,14 +51,60 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   };
 
   const handleFileUpload = () => {
-    console.log('File upload clicked');
+    fileInputRef.current?.click();
+  };
+
+  const onFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    try {
+      setUploading(true);
+      await apiService.uploadDocuments({ files: Array.from(files) });
+      // Add a lightweight system hint into the textbox
+      setMessage(prev => prev ? prev : 'Files uploaded. Ask a question to analyze them.');
+    } catch (err) {
+      console.error('Upload failed', err);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleVoiceRecording = () => {
     if (isRecording) {
       setIsRecording(false);
-    } else {
+      try { recognitionRef.current?.stop?.(); } catch {}
+      return;
+    }
+    try {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      if (!SpeechRecognition) {
+        console.warn('Web Speech API not available in this browser');
+        return;
+      }
+      const rec = new SpeechRecognition();
+      recognitionRef.current = rec;
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
+      let finalText = '';
+      rec.onresult = (event: any) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalText += transcript + ' ';
+          } else {
+            interim += transcript;
+          }
+        }
+        setMessage((finalText + interim).trim());
+      };
+      rec.onend = () => setIsRecording(false);
+      rec.start();
       setIsRecording(true);
+    } catch (e) {
+      console.warn('Speech recognition failed to start', e);
     }
   };
 
@@ -62,6 +112,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     <Card className="p-4">
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="relative">
+          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onFilesSelected} />
           <Textarea
             ref={textareaRef}
             value={message}
@@ -79,7 +130,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
               variant="ghost"
               size="sm"
               onClick={handleFileUpload}
-              disabled={disabled}
+              disabled={disabled || uploading}
               className="h-8 w-8 p-0"
             >
               <Paperclip className="h-4 w-4" />
@@ -104,7 +155,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         
         <div className="flex justify-between items-center">
           <div className="text-xs text-muted-foreground">
-            Press Enter to send, Shift+Enter for new line
+            Press Enter to send, Shift+Enter for new line {uploading ? '· Uploading…' : ''}
           </div>
           
           <Button

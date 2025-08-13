@@ -115,6 +115,12 @@ class Settings(BaseSettings):
                 _EP_ENV = _v
                 break
     AZURE_AI_PROJECT_ENDPOINT: str = _EP_ENV
+    # Bing Search configuration (for web grounding fallback)
+    BING_SEARCH_ENDPOINT: str = os.getenv("BING_SEARCH_ENDPOINT", "https://api.bing.microsoft.com/v7.0/search")
+    BING_SEARCH_SUBSCRIPTION_KEY: Optional[str] = os.getenv("BING_SEARCH_SUBSCRIPTION_KEY")
+    # Azure Speech Services (server STT)
+    AZURE_SPEECH_KEY: Optional[str] = os.getenv("AZURE_SPEECH_KEY")
+    AZURE_SPEECH_REGION: Optional[str] = os.getenv("AZURE_SPEECH_REGION")
     # Azure Monitor and Application Insights Configuration
     azure_monitor_connection_string: str = os.getenv("AZURE_MONITOR_CONNECTION_STRING", "")
     azure_key_vault_url: str = os.getenv("AZURE_KEY_VAULT_URL", "")

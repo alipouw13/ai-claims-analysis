@@ -93,16 +93,26 @@ class AzureAIAgentService:
         
     def _initialize_tools(self) -> List[Any]:
         """Initialize tools for agents"""
-        tools = []
-        
+        tools: List[Any] = []
         try:
-            # Note: FileSearchTool temporarily disabled due to serialization issues
-            # The RAG pattern is implemented directly in process_qa_request method
-            # by retrieving documents from vector store and passing as context
-            logger.info("Tools initialized (FileSearchTool disabled temporarily)")
+            # Note: FileSearchTool remains disabled; we do grounding via KB retrieval in app code
+            # Enable Bing Web Search grounding tool when a connection is configured in the project
+            try:
+                import os
+                from azure.ai.projects.models import BingGroundingTool
+                conn_id = os.getenv("BING_CONNECTION_NAME") or os.getenv("BING_CONNECTION_ID")
+                if conn_id:
+                    bing = BingGroundingTool(connection_id=conn_id)
+                    if hasattr(bing, "definitions"):
+                        tools = tools + bing.definitions
+                    else:
+                        tools.append(bing)
+                    logger.info("Bing grounding tool enabled for agents")
+            except Exception as tool_err:
+                logger.warning(f"Bing grounding tool initialization skipped: {tool_err}")
+            logger.info("Tools initialized (FileSearchTool disabled; Bing configured if connection provided)")
         except Exception as e:
             logger.warning(f"Could not initialize tools: {e}")
-        
         return tools
 
     async def process_chat_request(
@@ -237,7 +247,8 @@ class AzureAIAgentService:
             - Cite all sources appropriately
             - Focus on accuracy and relevance
             """,
-            model_deployment=model_deployment        )
+            model_deployment=model_deployment
+        )
     
     @trace_operation("azure_ai_agent_conversation")
     async def run_agent_conversation(self, agent_id: str, thread_id: str, message: str, context: Dict[str, Any] = None) -> AgentRunResult:
@@ -539,6 +550,14 @@ class AzureAIAgentService:
                     except Exception as e:
                         logger.error(f"❌ Failed to finalize embedding token tracking: {e}")
                 
+                # If no search results and Bing tool is available, perform web fallback to surface links
+                if not search_results:
+                    try:
+                        import os
+                        if os.getenv("BING_CONNECTION_NAME") or os.getenv("BING_CONNECTION_ID"):
+                            logger.info("KB returned 0 docs; Bing tool connection detected, will rely on agent tool during run.")
+                    except Exception:
+                        pass
                 logger.info(f"Retrieved {len(search_results)} relevant documents from vector store (requested: {search_config['top_k']} for {verification_level})")
                 
                 # Add search results to trace
@@ -837,6 +856,30 @@ class AzureAIAgentService:
                     message=enhanced_message,
                     context=enhanced_context
                 )
+                # Fallback: if the agent returned no text, synthesize an answer directly with AOAI
+                if not (result.response or "").strip():
+                    try:
+                        from app.services.azure_services import AzureServiceManager
+                        fallback_mgr = AzureServiceManager()
+                        await fallback_mgr.initialize()
+                        chat_deployment = self._extract_deployment_name(model_config.get('chat_model'))
+                        fallback_prompt = (
+                            "You are a financial analysis assistant. Use the provided context to answer the user's question.\n"
+                            "Cite sections explicitly in-line where appropriate. If the context lacks details, say so.\n\n"
+                            f"Context:\n{retrieved_context}\n\nUser Question: {question}\n\nAnswer:" 
+                        )
+                        resp = await fallback_mgr.openai_client.chat.completions.create(
+                            model=chat_deployment,
+                            messages=[{"role": "user", "content": fallback_prompt}],
+                            temperature=float(model_config.get('temperature') or 0.1),
+                            max_tokens=800
+                        )
+                        text = resp.choices[0].message.content if resp and resp.choices else ""
+                        # Mutate result to carry fallback answer
+                        result.response = text
+                    except Exception as _fallback_err:
+                        # Keep empty; upper layer will still return citations
+                        pass
                   # Get credibility check setting from context
                 credibility_check_enabled = context.get('credibility_check_enabled', False)
                 
@@ -925,6 +968,7 @@ class AzureAIAgentService:
                 logger.info(f"Creating Question Decomposition agent with deployment name: {chat_deployment}")
                 
                 decomposition_agent = await self.find_or_create_agent(
+                    model_deployment=chat_deployment,
                     agent_name="Question_Decomposition_Agent",
                     instructions="""
                     You are a financial question decomposition expert. Your task is to break down complex financial questions into smaller, researchable sub-questions that can be executed independently.
@@ -956,8 +1000,7 @@ class AzureAIAgentService:
                     ...
                     
                     Reasoning: [Explain your decomposition approach and why these sub-questions will gather comprehensive data]
-                    """,
-                    model_deployment=chat_deployment
+                    """
                 )
                 
                 # Create thread using Azure AI Projects SDK structure
@@ -1024,6 +1067,7 @@ class AzureAIAgentService:
                 # Extract chat model from sources (assuming it's in context)
                 chat_deployment = context.get('model_config', {}).get('chat_model') or settings.AZURE_OPENAI_CHAT_DEPLOYMENT_NAME
                 verification_agent = await self.find_or_create_agent(
+                    model_deployment=chat_deployment,
                     agent_name="Source_Verification_Agent",
                     instructions="""
                     You are a financial source credibility expert. Your task is to assess the trustworthiness and reliability of financial information sources.
@@ -1048,8 +1092,8 @@ class AzureAIAgentService:
                     [Repeat for each source]
                     
                     Overall Assessment: [Summary of findings]
-                    """,
-                    model_deployment=chat_deployment
+                    """
+                    
                 )
                 
                 # Create thread using Azure AI Projects SDK structure
@@ -1297,11 +1341,24 @@ class AzureAIAgentService:
                         model_deployment = settings.AZURE_OPENAI_CHAT_DEPLOYMENT_NAME
                     
                     # Auto-create if not found or listing failed (handles 404 resource not found)
+                    tools = self.tools
+                    # Attach Bing search tool if connection env provided and not already set
+                    try:
+                        import os
+                        from azure.ai.projects.models import BingGroundingTool
+                        conn_id = os.getenv("BING_CONNECTION_NAME") or os.getenv("BING_CONNECTION_ID")
+                        if conn_id:
+                            bing = BingGroundingTool(connection_id=conn_id)
+                            # Many SDKs require .definitions on the tool collection
+                            tools = (tools or []) + bing.definitions
+                    except Exception as _:
+                        pass
+                    
                     agent_definition = self.client.agents.create_agent(
                         model=model_deployment,
                         name=agent_name,
                         instructions=instructions,
-                        tools=self.tools
+                        tools=tools
                     )
                     logger.info(f"Created new agent: {agent_name} with ID: {agent_definition.id}")
                     span.set_attribute("agent_found", False)

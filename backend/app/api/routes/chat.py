@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, UploadFile, File
 from typing import List, Optional
 import logging
 import uuid
@@ -18,6 +18,8 @@ from app.core.observability import observability
 from app.services.azure_services import AzureServiceManager
 from app.services.azure_ai_agent_service import AzureAIAgentService
 from app.services.token_usage_tracker import TokenUsageTracker, ServiceType, OperationType
+from app.core.config import settings
+import httpx
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -322,6 +324,49 @@ The system is configured to use {request.chat_model} for generation and {request
         
         logger.error(f"Chat processing failed for session {session_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process chat request: {str(e)}")
+
+@router.get("/search")
+async def web_search(q: str):
+    """Backend Bing Web Search fallback. Requires BING_SEARCH_SUBSCRIPTION_KEY in config."""
+    if not settings.BING_SEARCH_SUBSCRIPTION_KEY:
+        raise HTTPException(status_code=501, detail="Bing Search not configured")
+    headers = {"Ocp-Apim-Subscription-Key": settings.BING_SEARCH_SUBSCRIPTION_KEY}
+    params = {"q": q, "count": 5, "mkt": "en-US"}
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(settings.BING_SEARCH_ENDPOINT, headers=headers, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+    results = []
+    for item in (data.get("webPages", {}).get("value", []) or [])[:5]:
+        results.append({
+            "name": item.get("name"),
+            "url": item.get("url"),
+            "snippet": item.get("snippet")
+        })
+    return {"results": results}
+
+@router.post("/speech-to-text")
+async def speech_to_text(audio: UploadFile = File(...)):
+    """Server-side STT using Azure Speech Services (REST). Accepts audio file and returns text.
+    Requires AZURE_SPEECH_KEY and AZURE_SPEECH_REGION.
+    """
+    if not (settings.AZURE_SPEECH_KEY and settings.AZURE_SPEECH_REGION):
+        raise HTTPException(status_code=501, detail="Speech service not configured")
+    try:
+        content = await audio.read()
+        endpoint = f"https://{settings.AZURE_SPEECH_REGION}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=en-US"
+        headers = {
+            "Ocp-Apim-Subscription-Key": settings.AZURE_SPEECH_KEY,
+            "Content-Type": audio.content_type or "audio/wav"
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(endpoint, headers=headers, content=content)
+            resp.raise_for_status()
+            data = resp.json()
+        text = data.get("DisplayText") or data.get("Text") or ""
+        return {"text": text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Speech recognition failed: {e}")
 
 @router.get("/sessions", response_model=List[SessionInfo])
 async def list_sessions(user_id: Optional[str] = None, limit: int = 50):

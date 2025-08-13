@@ -270,19 +270,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isActive = true 
       if (analyticsResponse.ok) {
         const analyticsData = await analyticsResponse.json();
         setTokenAnalytics(analyticsData.analytics);
-      }      if (trendsResponse.ok) {
+      }
+      if (trendsResponse.ok) {
         const trendsData = await trendsResponse.json();
-        setTokenTrends(trendsData.trends);
+        // Backend returns an object { trends: [...], period_days, granularity }
+        const trendSeries = Array.isArray(trendsData.trends) ? trendsData.trends : (trendsData.trends?.trends ?? []);
+        setTokenTrends(trendSeries);
       }
 
       if (deploymentsResponse.ok) {
         const deploymentsData = await deploymentsResponse.json();
-        setDeploymentUsage(deploymentsData.deployment_usage.deployments);
+        const deploymentsRaw = deploymentsData.deployment_usage?.deployments ?? deploymentsData.deployments ?? [];
+        // Coerce numeric fields to numbers so Recharts computes a correct domain
+        const deployments = deploymentsRaw.map((d: any) => ({
+          ...d,
+          tokens: Number(d?.tokens ?? d?.total_tokens ?? 0),
+          cost: Number(d?.cost ?? 0),
+          requests: Number(d?.requests ?? 0),
+        }));
+        setDeploymentUsage(deployments);
       }
 
       if (servicesResponse.ok) {
         const servicesData = await servicesResponse.json();
-        setServiceUsage(servicesData.service_usage.services);
+        const services = servicesData.service_usage?.services ?? servicesData.services ?? [];
+        setServiceUsage(services);
       }
 
       if (costsResponse.ok) {

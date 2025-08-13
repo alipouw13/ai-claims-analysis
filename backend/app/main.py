@@ -85,12 +85,44 @@ async def lifespan(app: FastAPI):
             orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
             agent_service: AzureAIAgentService = await orchestrator._get_azure_ai_agent_service()
             deployment_name = getattr(settings, 'AZURE_OPENAI_CHAT_DEPLOYMENT_NAME', 'gpt-4.1-mini')
+            # Ensure core financial agents
             await agent_service.find_or_create_agent(
                 agent_name="Chat_Content_Agent",
-                instructions="You are a helpful financial assistant.",
+                instructions=(
+                    "You are a helpful financial assistant. Answer clearly and concisely. "
+                    "Cite sources when provided in context."
+                ),
                 model_deployment=deployment_name,
             )
-            logger.info("Azure AI Agent warm-up completed")
+            # Ensure all three financial QA agents by level
+            financial_levels = [
+                ("Financial_QA_Agent_Basic", "basic"),
+                ("Financial__QA_Agent_Thorough", "thorough"),
+                ("Financial__QA_Agent_Comprehensive", "comprehensive"),
+            ]
+            for agent_name, lvl in financial_levels:
+                await agent_service.create_qa_agent(
+                    name=agent_name,
+                    instructions=f"You are a financial QA agent for {lvl} verification.",
+                    model_deployment=deployment_name,
+                )
+            await agent_service.create_content_generator_agent(
+                name="Financial_Content_Generator_Agent",
+                instructions="You generate financial content with accurate citations.",
+                model_deployment=deployment_name,
+            )
+            # Ensure insurance agents
+            try:
+                from app.services.azure_ai_agent_service_insurance import InsuranceAIAgentService
+                insurance_service = InsuranceAIAgentService(azure_manager.get_project_client())
+                await insurance_service.ensure_insurance_kb_manager_agent(deployment_name)
+                await insurance_service.ensure_insurance_chat_agent(deployment_name)
+                for lvl in ["Basic", "Thorough", "Comprehensive"]:
+                    await insurance_service.ensure_insurance_qa_agent(lvl, deployment_name)
+                await insurance_service.ensure_insurance_content_agent(deployment_name)
+            except Exception as ins_err:
+                logger.warning(f"Insurance agent warm-up failed: {ins_err}")
+            logger.info("Azure AI Agent warm-up completed (financial + insurance)")
         except Exception as warm_err:
             logger.warning(f"Agent warm-up failed (will fall back at runtime): {warm_err}")
 

@@ -1080,7 +1080,11 @@ async def ask_insurance_question(
     prev_query_both = settings.AZURE_SEARCH_QUERY_BOTH_INDEXES
     settings.AZURE_SEARCH_QUERY_BOTH_INDEXES = True
     try:
-        # Delegate to main pipeline but the azure_manager will now search policy+claims
+        # Force domain flag so KB manager picks policy/claims regardless of env
+        if not request.context:
+            request.context = {}
+        request.context["prefer_sec"] = False
+        request.context["domain"] = "insurance"
         return await ask_question(request, x_session_id, x_user_id)
     finally:
         settings.AZURE_SEARCH_QUERY_BOTH_INDEXES = prev_query_both

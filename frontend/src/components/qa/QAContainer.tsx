@@ -604,6 +604,7 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
                   )}
                 </SelectContent>
               </Select>
+              <span className="text-[10px] text-muted-foreground ml-2" title="These models power helper steps (evaluation, question decomposition, verification). They do not replace your Chat Model above for answer generation.">Helper models for evaluation/decomposition/verification (not the main Chat Model)</span>
             </div>
           )}
           <div className="text-xs text-muted-foreground ml-auto">Session: {currentSessionId.split('_')[2]} {agentServiceConnected && (<span className="text-green-600 font-medium ml-1">✓ Azure AI Agent Service</span>)}</div>

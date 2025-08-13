@@ -53,6 +53,46 @@ class EvaluationService:
             except Exception as e:
                 logger.warning(f"Failed to initialize Foundry evaluator: {e}")
                 self.foundry_evaluator = None
+
+    async def _log_run_to_foundry_portal(self, request: EvaluationRequest, result: 'EvaluationResult') -> Optional[str]:
+        """If configured, log an evaluation row to Azure AI Foundry so the run appears in the portal.
+
+        We use the azure.ai.evaluation `evaluate` helper with a single-row JSONL dataset created in-memory.
+        Returns a Studio URL if available, otherwise None. This is best-effort and non-blocking for main flow.
+        """
+        try:
+            from azure.ai.evaluation import evaluate as az_evaluate, EvaluationResult as AzEvalResult
+            if not settings.AZURE_AI_PROJECT_CONNECTION_STRING:
+                return None
+            # Lazy import to avoid global dependency at module import time
+            from azure.ai.projects import AIProjectClient
+            project = AIProjectClient.from_connection_string(settings.AZURE_AI_PROJECT_CONNECTION_STRING)
+
+            # Build a single-row dataset payload
+            row = {
+                "query": request.question,
+                "response": result.answer or "",
+                "context": "\n".join(request.context or []),
+            }
+
+            data = [row]
+            metrics = ["groundedness", "relevance", "coherence", "fluency"]
+            # Run evaluate; this logs to the Foundry project by default when a project client is provided
+            eval_out = az_evaluate(
+                data=data,
+                evaluators=metrics,
+                project=project,
+            )
+
+            # Try to extract portal URL
+            studio_url = getattr(eval_out, "studio_url", None)
+            # Fallback: some versions expose run_url, or output dict
+            if not studio_url and isinstance(eval_out, dict):
+                studio_url = eval_out.get("studio_url") or eval_out.get("run_url")
+            return studio_url
+        except Exception as e:
+            logger.debug(f"Foundry portal logging skipped: {e}")
+            return None
     
     def _ensure_custom_evaluator(self):
         """Lazy initialization of Custom evaluator"""
@@ -128,6 +168,15 @@ class EvaluationService:
             # Set timing information
             result.evaluation_duration_ms = int((time.time() - start_time) * 1000)
             result.evaluation_timestamp = datetime.utcnow()
+            # Best-effort: log this run to Azure AI Foundry portal so it appears in the UI
+            try:
+                studio_url = await self._log_run_to_foundry_portal(request, result)
+                if studio_url:
+                    if result.metadata is None:
+                        result.metadata = {}
+                    result.metadata["foundry_studio_url"] = studio_url
+            except Exception as _log_err:
+                logger.warning(f"Failed to log evaluation to Azure AI Foundry: {_log_err}")
             
             # Store result in Cosmos DB
             await self._store_result(result)
