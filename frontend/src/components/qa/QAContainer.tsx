@@ -335,11 +335,13 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
         : (selectedModel?.model_name || evaluationModel);
 
       const data = await (async () => {
-        // Route based on domain
-        const qaPath = domain === 'banking' ? '/api/v1/qa/ask' : '/api/v1/qa/insurance/ask';
-        const res = await fetch(qaPath, {
+        // Use the same endpoint with domain header
+        const res = await fetch('/api/v1/qa/ask', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Domain': domain || 'insurance'
+          },
           body: JSON.stringify({
             question: finalQuestion,
             session_id: currentSessionId,

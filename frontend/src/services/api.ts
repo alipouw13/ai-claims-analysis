@@ -11,6 +11,7 @@ export interface DocumentUploadRequest {
   company_name?: string;
   filing_date?: string;
   is_claim?: boolean;
+  domain?: 'insurance' | 'banking';
 }
 
 export interface DocumentUploadResponse {
@@ -119,6 +120,10 @@ class ApiService {
     // Optional hint for claims uploads
     if ((request as any).is_claim) {
       formData.append('is_claim', 'true');
+    }
+    // Domain information for routing to correct knowledge base
+    if (request.domain) {
+      formData.append('domain', request.domain);
     }
 
     const response = await fetch(`${API_BASE_URL}/documents/upload`, {

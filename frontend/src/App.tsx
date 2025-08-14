@@ -191,7 +191,7 @@ const AppContent = () => {
           </TabsContent>
           
           <TabsContent value="documents" className="m-0 bg-background">
-            <KnowledgeBaseManager modelSettings={globalModelSettings} role={role} />
+            <KnowledgeBaseManager modelSettings={globalModelSettings} role={role} domain={domain} />
           </TabsContent>
           <TabsContent value="sec-docs" className="m-0 bg-background">
             <SECDocumentsManager />

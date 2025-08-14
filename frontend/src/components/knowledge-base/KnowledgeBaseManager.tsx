@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Upload, FileText, CheckCircle, AlertCircle, Clock, Trash2, Eye, Download, RefreshCw } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, Clock, Trash2, Eye, Download, RefreshCw, Info } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import ChunkingVisualization from './ChunkingVisualization';
 import { ModelSettings } from '../shared/ModelConfiguration';
@@ -19,9 +19,10 @@ import { KnowledgeBaseAgentServiceStatus } from './KnowledgeBaseAgentServiceStat
 interface KnowledgeBaseManagerProps {
   modelSettings: ModelSettings;
   role: 'admin' | 'underwriter' | 'customer' | 'analyst';
+  domain?: 'insurance' | 'banking';
 }
 
-const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettings, role }) => {
+const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettings, role, domain = 'insurance' }) => {
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [conflicts, setConflicts] = useState<ConflictInfo[]>([]);
   const [metrics, setMetrics] = useState<KnowledgeBaseMetrics | null>(null);
@@ -73,10 +74,13 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
     setError(null);
     
     try {
+      // Determine which index to use based on domain
+      const targetIndex = domain === 'insurance' ? indexFilter : 'sec-docs';
+      
       const [documentsResponse, conflictsResponse, metricsResponse] = await Promise.all([
-        apiService.listDocuments(indexFilter !== 'all' ? { index: indexFilter } as any : undefined as any),
+        apiService.listDocuments(targetIndex !== 'all' ? { index: targetIndex } as any : undefined as any),
         apiService.getConflicts(),
-        apiService.getKnowledgeBaseMetrics(indexFilter === 'all' ? undefined : (indexFilter as 'policy' | 'claims'))
+        apiService.getKnowledgeBaseMetrics(targetIndex === 'all' ? undefined : (targetIndex as 'policy' | 'claims'))
       ]);
       
       setDocuments(documentsResponse.documents);
@@ -108,7 +112,8 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
         document_type: undefined,
         company_name: undefined,
         filing_date: undefined,
-        is_claim: role === 'customer'
+        is_claim: role === 'customer',
+        domain: domain // Pass domain information to backend
       });
 
       console.log('Upload initiated:', uploadResponse);
@@ -333,20 +338,33 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{role === 'customer' ? 'Claims Documents' : 'Policy Documents'} Management</h1>
-          <p className="text-muted-foreground text-sm">
-            {role === 'customer'
-              ? 'Upload and manage claim documents for AI analysis'
-              : 'Upload and manage policy documents and applications for AI analysis'}
-          </p>
-        </div>
-        <Button onClick={() => loadData()} variant="outline" disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-      </div>
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-2xl flex items-center gap-2">
+                Policy and Claims Document Management
+                <Badge variant="secondary">AI-Powered</Badge>
+              </CardTitle>
+              <p className="text-muted-foreground mt-2">
+                Upload and manage policy and claims documents for AI analysis with intelligent chunking and embeddings
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Info className="h-4 w-4" />
+                  Vector Store Integration
+                </div>
+                <Button onClick={() => loadData()} variant="outline" disabled={loading}>
+                  <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
 
       {error && (
         <Alert variant="destructive">
@@ -641,7 +659,7 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
 
         <TabsContent value="analytics" className="space-y-4">
           <div className="space-y-4">
-            <KnowledgeBaseAgentServiceStatus onRefresh={loadData} />
+            <KnowledgeBaseAgentServiceStatus onRefresh={loadData} domain={domain} />
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

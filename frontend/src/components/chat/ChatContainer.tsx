@@ -143,6 +143,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({ modelSettings, rol
         headers: {
           'Content-Type': 'application/json',
           'X-Session-ID': currentSessionId,
+          'X-Domain': domain || 'insurance',
         },
         body: JSON.stringify({
           message: content,

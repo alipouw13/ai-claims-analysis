@@ -13,9 +13,10 @@ interface AgentCapability {
 
 interface KnowledgeBaseAgentServiceStatusProps {
   onRefresh?: () => void;
+  domain?: 'insurance' | 'banking';
 }
 
-export const KnowledgeBaseAgentServiceStatus: React.FC<KnowledgeBaseAgentServiceStatusProps> = ({ onRefresh }) => {
+export const KnowledgeBaseAgentServiceStatus: React.FC<KnowledgeBaseAgentServiceStatusProps> = ({ onRefresh, domain = 'insurance' }) => {
   const [serviceStatus, setServiceStatus] = useState<'connected' | 'disconnected' | 'loading'>('loading');
   const [capabilities, setCapabilities] = useState<AgentCapability[]>([]);
   const [agentMetrics, setAgentMetrics] = useState({
@@ -31,7 +32,7 @@ export const KnowledgeBaseAgentServiceStatus: React.FC<KnowledgeBaseAgentService
       setIsRefreshing(true);
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
       
-      const capabilitiesResponse = await fetch(`${apiBaseUrl}/knowledge-base/capabilities`);
+      const capabilitiesResponse = await fetch(`${apiBaseUrl}/knowledge-base/capabilities?domain=${domain}`);
       if (capabilitiesResponse.ok) {
         const capabilitiesData = await capabilitiesResponse.json();
         setCapabilities(capabilitiesData.capabilities || []);
@@ -114,7 +115,28 @@ export const KnowledgeBaseAgentServiceStatus: React.FC<KnowledgeBaseAgentService
     }
   };
 
-  const defaultCapabilities: AgentCapability[] = [
+  const defaultCapabilities: AgentCapability[] = domain === 'insurance' ? [
+    {
+      name: 'Document Processing',
+      description: 'Process and chunk policy and claims documents for vector storage and retrieval',
+      status: serviceStatus === 'connected' ? 'available' : 'unavailable'
+    },
+    {
+      name: 'Conflict Detection',
+      description: 'Identify and flag conflicts between policy documents and claims data',
+      status: serviceStatus === 'connected' ? 'available' : 'unavailable'
+    },
+    {
+      name: 'Knowledge Base Management',
+      description: 'Manage policy and claims document lifecycle, metadata, and knowledge base organization',
+      status: serviceStatus === 'connected' ? 'available' : 'unavailable'
+    },
+    {
+      name: 'Vector Store Integration',
+      description: 'Integrate with Azure AI Search for efficient policy and claims document storage and retrieval',
+      status: serviceStatus === 'connected' ? 'available' : 'unavailable'
+    }
+  ] : [
     {
       name: 'Document Processing',
       description: 'Process and chunk financial documents for vector storage and retrieval',

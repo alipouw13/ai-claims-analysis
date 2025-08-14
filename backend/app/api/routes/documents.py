@@ -36,7 +36,8 @@ async def upload_documents(
     temperature: Optional[float] = Form(0.7),
     document_type: Optional[DocumentType] = Form(None),
     company_name: Optional[str] = Form(None),
-    filing_date: Optional[str] = Form(None)
+    filing_date: Optional[str] = Form(None),
+    domain: Optional[str] = Form("insurance")
 ):
     """Upload multiple financial documents for processing with Azure Document Intelligence"""
     try:
@@ -118,17 +119,20 @@ async def upload_documents(
                 logger.info(f"Content type: {content_type}")
                 
                 logger.info(f"Creating async task for document processing...")
-                # Determine target index: policy vs claims
-                target_index = settings.AZURE_SEARCH_POLICY_INDEX_NAME
-                # If metadata hints this is a claim, route to claims index (for Customer Submit Claim path)
-                if metadata.get("is_claim"):
-                    target_index = settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
+                # Determine target index based on domain and claim status
+                if domain == "banking":
+                    target_index = settings.AZURE_SEARCH_INDEX_NAME  # SEC index for banking
+                elif metadata.get("is_claim"):
+                    target_index = settings.AZURE_SEARCH_CLAIMS_INDEX_NAME  # Claims index for customer claims
+                else:
+                    target_index = settings.AZURE_SEARCH_POLICY_INDEX_NAME  # Policy index for insurance
 
                 # Initialize processing tracker
+                index_name = "sec" if domain == "banking" else ("claims" if metadata.get("is_claim") else "policy")
                 kb_processing_status[document_id] = {
                     "document_id": document_id,
                     "filename": file.filename,
-                    "index": "claims" if metadata.get("is_claim") else "policy",
+                    "index": index_name,
                     "stage": "queued",
                     "progress_percent": 0.0,
                     "message": "Queued for processing",

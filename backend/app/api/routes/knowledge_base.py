@@ -627,35 +627,59 @@ async def search_knowledge_base(
         raise HTTPException(status_code=500, detail="Failed to search knowledge base")
 
 @router.get("/capabilities")
-async def get_knowledge_base_capabilities():
+async def get_knowledge_base_capabilities(domain: str = "insurance"):
     """Get Knowledge Base Agent Service capabilities and status"""
     try:
         observability.track_request("get_kb_capabilities")
         
         logger.info("Knowledge Base Agent capabilities requested")
         
-        capabilities = [
-            {
-                "name": "Document Processing",
-                "description": "Process and chunk financial documents for vector storage and retrieval",
-                "status": "available"
-            },
-            {
-                "name": "Conflict Detection", 
-                "description": "Identify and flag conflicts between document sources and data inconsistencies",
-                "status": "available"
-            },
-            {
-                "name": "Knowledge Base Management",
-                "description": "Manage document lifecycle, metadata, and knowledge base organization", 
-                "status": "available"
-            },
-            {
-                "name": "Vector Store Integration",
-                "description": "Integrate with Azure AI Search for efficient document storage and retrieval",
-                "status": "available"
-            }
-        ]
+        if domain == "insurance":
+            capabilities = [
+                {
+                    "name": "Document Processing",
+                    "description": "Process and chunk policy and claims documents for vector storage and retrieval",
+                    "status": "available"
+                },
+                {
+                    "name": "Conflict Detection", 
+                    "description": "Identify and flag conflicts between policy documents and claims data",
+                    "status": "available"
+                },
+                {
+                    "name": "Knowledge Base Management",
+                    "description": "Manage policy and claims document lifecycle, metadata, and knowledge base organization", 
+                    "status": "available"
+                },
+                {
+                    "name": "Vector Store Integration",
+                    "description": "Integrate with Azure AI Search for efficient policy and claims document storage and retrieval",
+                    "status": "available"
+                }
+            ]
+        else:
+            capabilities = [
+                {
+                    "name": "Document Processing",
+                    "description": "Process and chunk financial documents for vector storage and retrieval",
+                    "status": "available"
+                },
+                {
+                    "name": "Conflict Detection", 
+                    "description": "Identify and flag conflicts between document sources and data inconsistencies",
+                    "status": "available"
+                },
+                {
+                    "name": "Knowledge Base Management",
+                    "description": "Manage document lifecycle, metadata, and knowledge base organization", 
+                    "status": "available"
+                },
+                {
+                    "name": "Vector Store Integration",
+                    "description": "Integrate with Azure AI Search for efficient document storage and retrieval",
+                    "status": "available"
+                }
+            ]
         
         return {
             "service_status": "connected",
@@ -663,7 +687,7 @@ async def get_knowledge_base_capabilities():
             "agent_info": {
                 "name": "Azure AI Knowledge Base Agent",
                 "version": "1.0.0",
-                "description": "AI agent for managing financial document knowledge base with Azure AI services"
+                "description": f"AI agent for managing {'policy and claims' if domain == 'insurance' else 'financial'} document knowledge base with Azure AI services"
             }
         }
     except Exception as e:

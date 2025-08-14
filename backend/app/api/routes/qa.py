@@ -38,7 +38,8 @@ logger = logging.getLogger(__name__)
 async def ask_question(
     request: QARequest,
     x_session_id: Optional[str] = Header(None),
-    x_user_id: Optional[str] = Header(None)
+    x_user_id: Optional[str] = Header(None),
+    x_domain: Optional[str] = Header(None)
 ):
     """Main QA endpoint for complex financial question answering with source verification"""
     start_time = time.time()
@@ -93,11 +94,23 @@ async def ask_question(
             kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
             
             logger.info("Creating multi-agent orchestrator...")
-            from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
-            orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
+            # Use insurance orchestrator for insurance domain, financial for banking
+            if x_domain == "insurance":
+                from app.services.agents.multi_agent_insurance_orchestrator import SemanticKernelInsuranceOrchestrator
+                orchestrator = SemanticKernelInsuranceOrchestrator()
+                await orchestrator.initialize()
+                logger.info("Using Insurance Orchestrator")
+            else:
+                from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
+                orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
+                logger.info("Using Financial Orchestrator")
             
             logger.info("Getting Azure AI Agent Service...")
-            azure_ai_agent_service = await orchestrator._get_azure_ai_agent_service()
+            if x_domain == "insurance":
+                # For insurance, use the orchestrator directly
+                azure_ai_agent_service = orchestrator
+            else:
+                azure_ai_agent_service = await orchestrator._get_azure_ai_agent_service()
             logger.info(f"Azure AI Agent Service type: {type(azure_ai_agent_service).__name__}")
             logger.info("Processing QA request with Azure AI Agent Service...")
             
