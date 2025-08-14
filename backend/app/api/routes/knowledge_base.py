@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Request
-from typing import List, Optional
+from typing import List, Optional, Dict
 import logging
 from datetime import datetime
 
@@ -23,6 +23,20 @@ async def get_knowledge_base_stats(request: Request):
     """Get current knowledge base statistics"""
     try:
         observability.track_request("knowledge_base_stats")
+        
+        # Check if Azure services are configured
+        if not (settings.AZURE_SEARCH_SERVICE_NAME and 
+                (settings.AZURE_SEARCH_API_KEY or 
+                 (settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID and settings.AZURE_CLIENT_SECRET))):
+            logger.warning("Azure Search not configured, returning default stats")
+            stats = KnowledgeBaseStats(
+                total_documents=0,
+                total_chunks=0,
+                last_updated=datetime.utcnow(),
+                documents_by_type={},
+                processing_queue_size=0
+            )
+            return stats
         
         azure_manager = getattr(request.app.state, 'azure_manager', None)
         if not azure_manager:
@@ -65,7 +79,14 @@ async def get_knowledge_base_stats(request: Request):
         return stats
     except Exception as e:
         logger.error(f"Error getting knowledge base stats: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve knowledge base statistics")
+        # Return default stats instead of 500 error
+        return KnowledgeBaseStats(
+            total_documents=0,
+            total_chunks=0,
+            last_updated=datetime.utcnow(),
+            documents_by_type={},
+            processing_queue_size=0
+        )
 
 @router.post("/update", response_model=dict)
 async def update_knowledge_base(request: KnowledgeBaseUpdateRequest):
@@ -96,8 +117,20 @@ async def list_documents(
     """List documents in the knowledge base (policy/claims)."""
     try:
         observability.track_request("list_documents")
-        azure_manager = AzureServiceManager()
-        await azure_manager.initialize()
+        
+        # Check if Azure services are configured
+        if not (settings.AZURE_SEARCH_SERVICE_NAME and 
+                (settings.AZURE_SEARCH_API_KEY or 
+                 (settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID and settings.AZURE_CLIENT_SECRET))):
+            logger.warning("Azure Search not configured, returning empty document list")
+            return {"documents": [], "status": "azure_not_configured"}
+
+        try:
+            azure_manager = AzureServiceManager()
+            await azure_manager.initialize()
+        except Exception as azure_init_error:
+            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            return {"documents": [], "status": "azure_initialization_failed"}
 
         # Resolve indexes to list from
         indexes = []
@@ -109,11 +142,16 @@ async def list_documents(
         else:
             indexes = [settings.AZURE_SEARCH_POLICY_INDEX_NAME, settings.AZURE_SEARCH_CLAIMS_INDEX_NAME]
 
+        # Filter out None/empty indexes
+        indexes = [ix for ix in indexes if ix]
+        
+        if not indexes:
+            logger.warning("No search indexes configured for policy/claims")
+            return {"documents": [], "status": "no_indexes_configured"}
+
         documents: List[Dict] = []
         for ix in indexes:
             try:
-                if not ix:
-                    continue
                 items = await azure_manager.list_unique_documents(ix)
                 for d in items:
                     d["index"] = "policy" if ix == settings.AZURE_SEARCH_POLICY_INDEX_NAME else "claims"
@@ -125,10 +163,11 @@ async def list_documents(
             except Exception as e:
                 logger.warning(f"Skipping index '{ix}' due to error: {e}")
 
-        return {"documents": documents}
+        return {"documents": documents, "status": "success"}
     except Exception as e:
         logger.error(f"Error listing documents: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
+        # Return graceful error response instead of 500
+        return {"documents": [], "status": "error", "error_message": str(e)}
 
 @router.get("/documents/{document_id}", response_model=DocumentInfo)
 async def get_document(document_id: str):
@@ -146,14 +185,32 @@ async def get_document(document_id: str):
 @router.get("/documents/{document_id}/chunks")
 async def get_document_chunks(document_id: str, index: str = "policy"):
     try:
-        azure_manager = AzureServiceManager()
-        await azure_manager.initialize()
+        # Check if Azure services are configured
+        if not (settings.AZURE_SEARCH_SERVICE_NAME and 
+                (settings.AZURE_SEARCH_API_KEY or 
+                 (settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID and settings.AZURE_CLIENT_SECRET))):
+            logger.warning("Azure Search not configured, returning empty chunks")
+            return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "azure_not_configured"}
+
+        try:
+            azure_manager = AzureServiceManager()
+            await azure_manager.initialize()
+        except Exception as azure_init_error:
+            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "azure_initialization_failed"}
+
         ix_name = settings.AZURE_SEARCH_POLICY_INDEX_NAME if index.lower() == "policy" else settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
+        
+        if not ix_name:
+            logger.warning(f"No index configured for {index}")
+            return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "no_index_configured"}
+
         chunks = await azure_manager.get_chunks_for_document(ix_name, document_id)
-        return {"document_id": document_id, "index": index, "chunks": chunks, "total": len(chunks)}
+        return {"document_id": document_id, "index": index, "chunks": chunks, "total": len(chunks), "status": "success"}
     except Exception as e:
         logger.error(f"Error getting document chunks: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve chunks")
+        # Return graceful error response instead of 500
+        return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "error", "error_message": str(e)}
 
 @router.get("/documents/{document_id}/chunk-visualization")
 async def get_policy_claims_chunk_visualization(document_id: str, index: str = "policy"):
@@ -162,14 +219,50 @@ async def get_policy_claims_chunk_visualization(document_id: str, index: str = "
     totals, averages, and distributions similar to SEC analysis.
     """
     try:
-        azure_manager = AzureServiceManager()
-        await azure_manager.initialize()
+        # Check if Azure services are configured
+        if not (settings.AZURE_SEARCH_SERVICE_NAME and 
+                (settings.AZURE_SEARCH_API_KEY or 
+                 (settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID and settings.AZURE_CLIENT_SECRET))):
+            logger.warning("Azure Search not configured, returning empty chunk visualization")
+            return {
+                "document_info": {"document_id": document_id, "title": document_id, "index": index},
+                "chunks": [],
+                "stats": {"total_chunks": 0, "avg_length": 0},
+                "status": "azure_not_configured"
+            }
+
+        try:
+            azure_manager = AzureServiceManager()
+            await azure_manager.initialize()
+        except Exception as azure_init_error:
+            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            return {
+                "document_info": {"document_id": document_id, "title": document_id, "index": index},
+                "chunks": [],
+                "stats": {"total_chunks": 0, "avg_length": 0},
+                "status": "azure_initialization_failed"
+            }
 
         ix_name = settings.AZURE_SEARCH_POLICY_INDEX_NAME if index.lower() == "policy" else settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
+        
+        if not ix_name:
+            logger.warning(f"No index configured for {index}")
+            return {
+                "document_info": {"document_id": document_id, "title": document_id, "index": index},
+                "chunks": [],
+                "stats": {"total_chunks": 0, "avg_length": 0},
+                "status": "no_index_configured"
+            }
+
         raw_chunks = await azure_manager.get_chunks_for_document(ix_name, document_id, top_k=2000)
 
         if not raw_chunks:
-            raise HTTPException(status_code=404, detail="Document not found")
+            return {
+                "document_info": {"document_id": document_id, "title": document_id, "index": index},
+                "chunks": [],
+                "stats": {"total_chunks": 0, "avg_length": 0},
+                "status": "document_not_found"
+            }
 
         # Normalize and compute stats
         chunks = []
@@ -215,12 +308,21 @@ async def get_policy_claims_chunk_visualization(document_id: str, index: str = "
             "document_info": document_info,
             "chunks": chunks,
             "chunk_stats": chunk_stats,
+            "status": "success"
         }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error building policy/claims chunk visualization: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get chunk visualization")
+        # Return graceful error response instead of 500
+        return {
+            "document_id": document_id,
+            "document_info": {"document_id": document_id, "title": document_id, "index": index},
+            "chunks": [],
+            "chunk_stats": {"total_chunks": 0, "avg_chunk_length": 0},
+            "status": "error",
+            "error_message": str(e)
+        }
 
 @router.delete("/documents/{document_id}")
 async def delete_document(document_id: str):
@@ -230,10 +332,10 @@ async def delete_document(document_id: str):
         
         logger.info(f"Document deletion requested: {document_id}")
         
-        return {"message": f"Document {document_id} deleted successfully"}
+        return {"message": f"Document {document_id} deleted successfully", "status": "success"}
     except Exception as e:
         logger.error(f"Error deleting document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete document")
+        return {"message": f"Failed to delete document {document_id}", "status": "error", "error_message": str(e)}
 
 @router.post("/documents/{document_id}/reprocess")
 async def reprocess_document(document_id: str):
@@ -243,10 +345,10 @@ async def reprocess_document(document_id: str):
         
         logger.info(f"Document reprocessing requested: {document_id}")
         
-        return {"message": f"Document {document_id} queued for reprocessing"}
+        return {"message": f"Document {document_id} queued for reprocessing", "status": "success"}
     except Exception as e:
         logger.error(f"Error reprocessing document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to reprocess document")
+        return {"message": f"Failed to reprocess document {document_id}", "status": "error", "error_message": str(e)}
 
 @router.get("/conflicts")
 async def get_conflicts(
@@ -261,6 +363,8 @@ async def get_conflicts(
         
         logger.info(f"Conflicts requested: status={status}, document_id={document_id}")
         
+        # For now, return mock conflicts data
+        # In a real implementation, this would query the knowledge base for actual conflicts
         conflicts = [
             {
                 "id": "1",
@@ -276,22 +380,26 @@ async def get_conflicts(
                 "documentId": "doc_1", 
                 "chunkId": "chunk_89",
                 "conflictType": "duplicate",
-                "description": "Similar content found in multiple documents",
-                "sources": ["AAPL_10K_2023.pdf", "MSFT_10K_2023.pdf"],
-                "status": "pending"
+                "description": "Duplicate content found in multiple sections",
+                "sources": ["AAPL_10K_2023.pdf"],
+                "status": "resolved"
             }
         ]
         
+        # Apply filters
         if status:
             conflicts = [c for c in conflicts if c["status"] == status]
-        
         if document_id:
             conflicts = [c for c in conflicts if c["documentId"] == document_id]
         
-        return {"conflicts": conflicts}
+        # Apply pagination
+        conflicts = conflicts[offset:offset + limit]
+        
+        return {"conflicts": conflicts, "status": "success"}
     except Exception as e:
         logger.error(f"Error getting conflicts: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve conflicts")
+        # Return graceful error response instead of 500
+        return {"conflicts": [], "status": "error", "error_message": str(e)}
 
 @router.patch("/conflicts/{conflict_id}")
 async def resolve_conflict(conflict_id: str, status: str):
@@ -302,7 +410,12 @@ async def resolve_conflict(conflict_id: str, status: str):
         logger.info(f"Conflict resolution requested: {conflict_id}, status: {status}")
         
         if status not in ["resolved", "ignored"]:
-            raise HTTPException(status_code=400, detail="Invalid status. Must be 'resolved' or 'ignored'")
+            return {
+                "conflict_id": conflict_id,
+                "status": "error",
+                "message": "Invalid status. Must be 'resolved' or 'ignored'",
+                "error_message": "Invalid status value"
+            }
         
         return {
             "conflict_id": conflict_id,
@@ -313,7 +426,12 @@ async def resolve_conflict(conflict_id: str, status: str):
         raise
     except Exception as e:
         logger.error(f"Error resolving conflict {conflict_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to resolve conflict")
+        return {
+            "conflict_id": conflict_id,
+            "status": "error",
+            "message": f"Failed to resolve conflict {conflict_id}",
+            "error_message": str(e)
+        }
 
 @router.get("/metrics")
 async def get_knowledge_base_metrics(index: Optional[str] = None):
@@ -326,11 +444,39 @@ async def get_knowledge_base_metrics(index: Optional[str] = None):
         observability.track_request("get_kb_metrics")
         logger.info("Knowledge base metrics requested")
 
-        azure_manager = AzureServiceManager()
-        await azure_manager.initialize()
+        # Check if Azure services are configured
+        if not (settings.AZURE_SEARCH_SERVICE_NAME and 
+                (settings.AZURE_SEARCH_API_KEY or 
+                 (settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID and settings.AZURE_CLIENT_SECRET))):
+            logger.warning("Azure Search not configured, returning empty metrics")
+            return {
+                "total_documents": 0,
+                "total_chunks": 0,
+                "active_conflicts": 0,
+                "processing_rate": 0,
+                "documents_by_type": {},
+                "processing_queue_size": 0,
+                "last_updated": datetime.utcnow().isoformat(),
+                "status": "azure_not_configured"
+            }
+
+        try:
+            azure_manager = AzureServiceManager()
+            await azure_manager.initialize()
+        except Exception as azure_init_error:
+            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            return {
+                "total_documents": 0,
+                "total_chunks": 0,
+                "active_conflicts": 0,
+                "processing_rate": 0,
+                "documents_by_type": {},
+                "processing_queue_size": 0,
+                "last_updated": datetime.utcnow().isoformat(),
+                "status": "azure_initialization_failed"
+            }
 
         # Resolve which indexes to include
-        from app.core.config import settings
         ix_list = []
         req = (index or "").lower()
         if req == "policy":
@@ -343,6 +489,20 @@ async def get_knowledge_base_metrics(index: Optional[str] = None):
             for ix in [settings.AZURE_SEARCH_POLICY_INDEX_NAME, settings.AZURE_SEARCH_CLAIMS_INDEX_NAME]:
                 if ix:
                     ix_list.append(ix)
+
+        # If no indexes are configured, return empty metrics
+        if not ix_list:
+            logger.warning("No search indexes configured for policy/claims")
+            return {
+                "total_documents": 0,
+                "total_chunks": 0,
+                "active_conflicts": 0,
+                "processing_rate": 0,
+                "documents_by_type": {},
+                "processing_queue_size": 0,
+                "last_updated": datetime.utcnow().isoformat(),
+                "status": "no_indexes_configured"
+            }
 
         total_documents = 0
         total_chunks = 0
@@ -373,13 +533,25 @@ async def get_knowledge_base_metrics(index: Optional[str] = None):
             "processing_rate": 100 if total_documents > 0 else 0,
             "documents_by_type": documents_by_type,
             "processing_queue_size": 0,
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.utcnow().isoformat(),
+            "status": "success"
         }
 
         return metrics
     except Exception as e:
         logger.error(f"Error getting KB metrics: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve knowledge base metrics")
+        # Return graceful error response instead of 500
+        return {
+            "total_documents": 0,
+            "total_chunks": 0,
+            "active_conflicts": 0,
+            "processing_rate": 0,
+            "documents_by_type": {},
+            "processing_queue_size": 0,
+            "last_updated": datetime.utcnow().isoformat(),
+            "status": "error",
+            "error_message": str(e)
+        }
 
 @router.get("/search")
 async def search_knowledge_base(

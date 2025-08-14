@@ -438,6 +438,33 @@ class ApiService {
     return this.makeRequest(`/sec/batch/${batchId}/status`);
   }
 
+  async getDocumentBatchStatus(batchId: string): Promise<{
+    batch_id: string;
+    total_documents: number;
+    completed_documents: number;
+    failed_documents: number;
+    current_processing: Array<{
+      document_id: string;
+      filename: string;
+      index: string;
+      stage: string;
+      progress_percent: number;
+      message: string;
+      started_at: string;
+      updated_at: string;
+      completed_at?: string;
+      error_message?: string;
+      chunks_created: number;
+      tokens_used: number;
+    }>;
+    overall_progress_percent: number;
+    started_at: string;
+    finished_at?: string;
+    status: string; // "processing", "completed", "failed"
+  }> {
+    return this.makeRequest(`/documents/batch/${batchId}/status`);
+  }
+
   async deleteSECDocument(documentId: string): Promise<{
     message: string;
     document_id: string;

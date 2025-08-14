@@ -1,5 +1,6 @@
 # Environment variables
 .env
+
 # Python cache
 __pycache__/
 *.py[cod]
@@ -103,3 +104,5 @@ backend/.env
 frontend/.env
 .env.backend
 .env.mcp
+
+.gitattributes

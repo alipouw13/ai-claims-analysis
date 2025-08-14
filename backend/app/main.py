@@ -32,9 +32,9 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(l
 logging.getLogger("azure.identity").setLevel(logging.WARNING)
 
 from app.core.config import settings
-from app.api.routes import knowledge_base, chat, admin, documents, qa, sec_documents, deployments, evaluation, workflows
+from app.api.routes import knowledge_base, chat, admin, documents, qa, sec_documents, deployments, evaluation, workflows, agents, insurance_orchestration
 from app.services.azure_services import AzureServiceManager
-from app.services.azure_ai_agent_service import AzureAIAgentService
+from app.services.agents.azure_ai_agent_service import AzureAIAgentService
 from app.services.bootstrap_vectorization import bootstrap_policy_claims_vectorization
 from app.core.observability import observability, setup_fastapi_instrumentation
 from app.core.tracing import setup_ai_foundry_tracing
@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
         # Warm up Azure AI Agents: ensure a default agent exists to avoid 404 at runtime
         try:
             from app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
-            from app.services.multi_agent_orchestrator import MultiAgentOrchestrator
+            from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
             kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
             orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
             agent_service: AzureAIAgentService = await orchestrator._get_azure_ai_agent_service()
@@ -111,18 +111,8 @@ async def lifespan(app: FastAPI):
                 instructions="You generate financial content with accurate citations.",
                 model_deployment=deployment_name,
             )
-            # Ensure insurance agents
-            try:
-                from app.services.azure_ai_agent_service_insurance import InsuranceAIAgentService
-                insurance_service = InsuranceAIAgentService(azure_manager.get_project_client())
-                await insurance_service.ensure_insurance_kb_manager_agent(deployment_name)
-                await insurance_service.ensure_insurance_chat_agent(deployment_name)
-                for lvl in ["Basic", "Thorough", "Comprehensive"]:
-                    await insurance_service.ensure_insurance_qa_agent(lvl, deployment_name)
-                await insurance_service.ensure_insurance_content_agent(deployment_name)
-            except Exception as ins_err:
-                logger.warning(f"Insurance agent warm-up failed: {ins_err}")
-            logger.info("Azure AI Agent warm-up completed (financial + insurance)")
+            # Insurance agent warm-up removed - using Semantic Kernel orchestrator instead
+            logger.info("Azure AI Agent warm-up completed (financial only)")
         except Exception as warm_err:
             logger.warning(f"Agent warm-up failed (will fall back at runtime): {warm_err}")
 
@@ -231,6 +221,9 @@ application.include_router(evaluation.router, prefix="/api/v1/evaluation", tags=
 application.include_router(deployments.router, prefix="/api/v1", tags=["Deployments"])
 application.include_router(sec_documents.router, tags=["SEC Documents"])
 application.include_router(workflows.router, prefix="/api/v1", tags=["Workflows"])
+application.include_router(agents.router, prefix="/api/v1/agents", tags=["Agents"])
+application.include_router(insurance_orchestration.router, prefix="/api/v1/insurance", tags=["Insurance Orchestration"])
+
 
 @application.get("/")
 async def root():

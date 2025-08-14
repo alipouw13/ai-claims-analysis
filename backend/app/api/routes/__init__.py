@@ -1,4 +1,4 @@
-from . import admin, chat, documents, knowledge_base, qa, sec_documents, deployments, evaluation, workflows
+from . import admin, chat, documents, knowledge_base, qa, sec_documents, deployments, evaluation, workflows, insurance_orchestration
 
 __all__ = [
     "admin",
@@ -6,10 +6,11 @@ __all__ = [
     "documents",
     "knowledge_base",
     "qa",
-    "qa.ins_router",
+    
     "sec_documents",
     "deployments",
     "evaluation",
     "workflows",
+    "insurance_orchestration",
 ]
 

@@ -654,7 +654,8 @@ class AzureServiceManager:
     async def get_embedding(self, text: str, model: str = None, token_tracker=None, tracking_id: str = None) -> List[float]:
         """Get embedding for text using Azure OpenAI async client"""
         try:
-            # Use deployment name from settings, not model name
+            # Use deployment name from settings
+            # For Azure OpenAI, we use the deployment name as the model parameter
             deployment_name = model or settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME
             
             # Add timing and thread logging for debugging

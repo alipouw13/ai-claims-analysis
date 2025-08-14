@@ -165,14 +165,16 @@ class DocumentProcessor:
                     getattr(settings, 'AZURE_SEARCH_POLICY_INDEX_NAME', None),
                     getattr(settings, 'AZURE_SEARCH_CLAIMS_INDEX_NAME', None),
                 }:
-                    search_documents.append({
+                    # Use the correct schema for existing policy/claims indexes
+                    search_doc = {
                         "chunk_id": f"{document_id}_{chunk.chunk_id}",
                         "parent_id": document_id,
                         "chunk": chunk.content,
                         "title": chunk.metadata.get("title", source),
                         "text_vector": chunk.embedding,
-                        "processed_at": datetime.utcnow().isoformat(),
-                    })
+                    }
+                    
+                    search_documents.append(search_doc)
                     continue
 
                 # Default schema for generic/SEC or claims

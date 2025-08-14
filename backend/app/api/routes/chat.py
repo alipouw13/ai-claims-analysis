@@ -16,7 +16,7 @@ from app.core.observability import observability
 # Temporarily disable evaluation due to package conflicts
 # from app.core.evaluation import get_evaluation_framework
 from app.services.azure_services import AzureServiceManager
-from app.services.azure_ai_agent_service import AzureAIAgentService
+from app.services.agents.azure_ai_agent_service import AzureAIAgentService
 from app.services.token_usage_tracker import TokenUsageTracker, ServiceType, OperationType
 from app.core.config import settings
 import httpx
@@ -71,7 +71,7 @@ async def chat(
             kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
             
             logger.info("Creating multi-agent orchestrator...")
-            from app.services.multi_agent_orchestrator import MultiAgentOrchestrator
+            from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
             orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
             
             logger.info("Getting Azure AI Agent Service...")
@@ -491,7 +491,7 @@ async def get_chat_capabilities():
             from app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
             kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
             
-            from app.services.multi_agent_orchestrator import MultiAgentOrchestrator
+            from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
             orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
             
             azure_ai_agent_service = await orchestrator._get_azure_ai_agent_service()

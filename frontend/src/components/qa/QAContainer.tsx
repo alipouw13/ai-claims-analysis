@@ -233,7 +233,7 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
               id: model.deployment_name || model.id, // Use deployment name for API calls
               name: model.name, // Display name with deployment name
               provider: 'Azure AI Foundry',
-              model_name: model.model_name // Store model name for evaluation
+                              // model_name: model.model_name // Store model name for evaluation
             });
           }
         });
@@ -612,9 +612,9 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
         {/* Inline panels below controls */}
         <div className="mt-2 space-y-3">
           {showAgentStatus && (<AgentServiceStatus onRefresh={handleRefreshAgentStatus} isVisible={showAgentStatus} />)}
-          {showOverallPerformance && (<PerformanceDashboard sessionMetrics={sessionMetrics} onClose={() => setShowOverallPerformance(false)} />)}
-          {showQuestionPerformance && selectedQuestionPerformance && (<PerformanceDashboard questionMetrics={selectedQuestionPerformance} onClose={handleCloseQuestionPerformance} />)}
-          {showReasoningChain && selectedReasoningChain && (<ReasoningChainDisplay reasoningChain={selectedReasoningChain} onClose={() => setShowReasoningChain(false)} />)}
+          {showOverallPerformance && (<PerformanceDashboard sessionMetrics={sessionMetrics} isVisible={showOverallPerformance} />)}
+          {showQuestionPerformance && selectedQuestionPerformance && (<PerformanceDashboard sessionMetrics={selectedQuestionPerformance} isVisible={showQuestionPerformance} />)}
+          {showReasoningChain && selectedReasoningChain && (<ReasoningChainDisplay reasoningChain={selectedReasoningChain} onClose={() => setShowReasoningChain(false)} isVisible={showReasoningChain} />)}
               </div>
             </div>
 

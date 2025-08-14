@@ -12,7 +12,7 @@ from semantic_kernel.contents import ChatHistory
 from app.services.azure_services import AzureServiceManager
 from app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
 from app.services.document_processor import DocumentProcessor
-from app.services.azure_ai_agent_service import AzureAIAgentService
+from app.services.agents.azure_ai_agent_service import AzureAIAgentService
 from app.core.config import settings
 from app.core.observability import observability
 

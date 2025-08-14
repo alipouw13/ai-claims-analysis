@@ -20,13 +20,13 @@ from app.models.schemas import (
 from app.core.observability import observability
 # Temporarily disable evaluation due to package conflicts
 # from app.core.evaluation import get_evaluation_framework
-from app.services.multi_agent_orchestrator import MultiAgentOrchestrator, AgentType
-from app.services.azure_ai_agent_service import AzureAIAgentService
+from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator, AgentType
+from app.services.agents.azure_ai_agent_service import AzureAIAgentService
 from app.services.azure_services import AzureServiceManager
 from app.services.token_usage_tracker import TokenUsageTracker, ServiceType, OperationType
 from app.services.performance_tracker import performance_tracker
 from app.services.traditional_rag_service import TraditionalRAGService
-from app.services.agentic_vector_rag_service import AgenticVectorRAGService
+from app.services.agents.agentic_vector_rag_service import AgenticVectorRAGService
 from app.services.evaluation_service import evaluation_service
 from app.services.mcp_client import mcp_service
 
@@ -93,7 +93,7 @@ async def ask_question(
             kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
             
             logger.info("Creating multi-agent orchestrator...")
-            from app.services.multi_agent_orchestrator import MultiAgentOrchestrator
+            from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
             orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
             
             logger.info("Getting Azure AI Agent Service...")
@@ -501,7 +501,7 @@ async def decompose_question(
             from app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
             kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
             
-            from app.services.multi_agent_orchestrator import MultiAgentOrchestrator
+            from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
             orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
             azure_ai_agent_service = await orchestrator._get_azure_ai_agent_service()
               # Use Azure AI Agent Service for question decomposition
@@ -623,7 +623,7 @@ async def verify_sources_flexible(
             from app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
             kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
             
-            from app.services.multi_agent_orchestrator import MultiAgentOrchestrator
+            from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
             orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
             azure_ai_agent_service = await orchestrator._get_azure_ai_agent_service()
             
@@ -791,7 +791,7 @@ async def verify_citations(
             from app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
             kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
             
-            from app.services.multi_agent_orchestrator import MultiAgentOrchestrator
+            from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
             orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
             azure_ai_agent_service = await orchestrator._get_azure_ai_agent_service()
             
@@ -931,7 +931,7 @@ async def verify_single_source(
             from app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
             kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
             
-            from app.services.multi_agent_orchestrator import MultiAgentOrchestrator
+            from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
             orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
             azure_ai_agent_service = await orchestrator._get_azure_ai_agent_service()
             
@@ -1074,20 +1074,57 @@ async def ask_insurance_question(
     x_session_id: Optional[str] = Header(None),
     x_user_id: Optional[str] = Header(None)
 ):
-    """QA endpoint specialized for policies and claims. Forces search over policy/claims indexes only."""
-    # Ensure both policy and claims indexes are searched
-    from app.core.config import settings
-    prev_query_both = settings.AZURE_SEARCH_QUERY_BOTH_INDEXES
-    settings.AZURE_SEARCH_QUERY_BOTH_INDEXES = True
+    """Insurance QA endpoint using insurance-specific orchestrator and KB manager."""
+    start_time = time.time()
+    session_id = x_session_id or request.session_id or str(uuid.uuid4())
+    token_tracker = TokenUsageTracker()
+    await token_tracker.initialize()
+    tracking_id = token_tracker.start_tracking(
+        session_id=session_id,
+        service_type=ServiceType.QA_SERVICE,
+        operation_type=OperationType.ANSWER_GENERATION,
+        endpoint="/qa/insurance/ask",
+        user_id=x_user_id,
+        request_text=request.question,
+        temperature=request.temperature,
+        verification_level=str(request.verification_level) if request.verification_level is not None else None,
+        credibility_check_enabled=request.credibility_check_enabled
+    )
     try:
-        # Force domain flag so KB manager picks policy/claims regardless of env
-        if not request.context:
-            request.context = {}
-        request.context["prefer_sec"] = False
-        request.context["domain"] = "insurance"
-        return await ask_question(request, x_session_id, x_user_id)
-    finally:
-        settings.AZURE_SEARCH_QUERY_BOTH_INDEXES = prev_query_both
+        azure_manager = AzureServiceManager()
+        await azure_manager.initialize()
+        # Insurance KB manager
+        from app.services.knowledge_base_manager_insurance import InsuranceKnowledgeBaseManager
+        kb_manager = InsuranceKnowledgeBaseManager(azure_manager)
+        # Insurance orchestrator
+        from app.services.agents.multi_agent_insurance_orchestrator import InsuranceMultiAgentOrchestrator
+        orchestrator = InsuranceMultiAgentOrchestrator(azure_manager, kb_manager)
+        # Use agent RAG path with insurance stack
+        embedding_tracking_id = token_tracker.start_tracking(
+            session_id=session_id,
+            service_type=ServiceType.QA_SERVICE,
+            operation_type=OperationType.EMBEDDING_GENERATION,
+            endpoint="/qa/insurance/ask",
+            user_id=x_user_id,
+            model_name=request.embedding_model,
+            deployment_name=request.embedding_model
+        )
+        question_id = str(uuid.uuid4())
+        qa_result = await process_with_agent_rag(
+            request=request,
+            azure_manager=azure_manager,
+            kb_manager=kb_manager,
+            orchestrator=orchestrator,
+            session_id=session_id,
+            token_tracker=token_tracker,
+            tracking_id=tracking_id,
+            embedding_tracking_id=embedding_tracking_id,
+            question_id=question_id
+        )
+        return QAResponse(**qa_result)
+    except Exception as e:
+        logger.error(f"Insurance QA failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/performance-metrics/{session_id}", response_model=PerformanceMetrics)

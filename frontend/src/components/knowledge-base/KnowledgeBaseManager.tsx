@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,7 @@ import { KnowledgeBaseAgentServiceStatus } from './KnowledgeBaseAgentServiceStat
 
 interface KnowledgeBaseManagerProps {
   modelSettings: ModelSettings;
-  role: 'admin' | 'underwriter' | 'customer';
+  role: 'admin' | 'underwriter' | 'customer' | 'analyst';
 }
 
 const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettings, role }) => {
@@ -41,6 +41,9 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
   const [previewChunks, setPreviewChunks] = useState<any[]>([]);
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
   const [inlineNotice, setInlineNotice] = useState<{ type: 'success' | 'error'; message: string; latestDocId?: string } | null>(null);
+  const [batchStatus, setBatchStatus] = useState<any>(null);
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
+  const statusCheckInterval = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     loadData();
@@ -55,6 +58,15 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
     }, 3000);
     return () => clearInterval(id);
   }, [activeTab, isUploading]);
+
+  // Cleanup status check interval on unmount
+  useEffect(() => {
+    return () => {
+      if (statusCheckInterval.current) {
+        clearInterval(statusCheckInterval.current);
+      }
+    };
+  }, []);
 
   const loadData = async (opts: { silent?: boolean } = {}) => {
     if (!opts.silent) setLoading(true);
@@ -99,26 +111,63 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
         is_claim: role === 'customer'
       });
 
-      console.log('Upload successful:', uploadResponse);
+      console.log('Upload initiated:', uploadResponse);
       setSelectedFiles(null);
-      // Notify success with in-app banner and CTA to open chunk visualization for the new doc
-      setInlineNotice({
-        type: 'success',
-        message: `${filesArray.length} file(s) uploaded. Click View Analysis to open Chunk Visualization.`,
-        latestDocId: (uploadResponse && uploadResponse[0] && uploadResponse[0].document_id) || undefined,
-      });
       
-      const interval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            setIsUploading(false);
-            loadData(); // Refresh data after upload
-            return 100;
-          }
-          return prev + 10;
+      // Check if any documents are still processing
+      const processingDocs = uploadResponse.filter(doc => doc.status === 'processing');
+      const completedDocs = uploadResponse.filter(doc => doc.status === 'completed');
+      const failedDocs = uploadResponse.filter(doc => doc.status === 'failed');
+      
+      if (processingDocs.length > 0) {
+        // Extract batch ID from the first processing document
+        const batchId = uploadResponse[0]?.document_id ? `kb_batch_${Math.floor(Date.now() / 1000)}` : null;
+        setCurrentBatchId(batchId);
+        
+        if (batchId) {
+          // Start batch status polling similar to SEC documents
+          startBatchStatusChecking(batchId, filesArray.length, uploadResponse[0]?.document_id);
+        }
+      } else if (completedDocs.length > 0) {
+        // All documents completed immediately
+        setInlineNotice({
+          type: 'success',
+          message: `${filesArray.length} file(s) uploaded successfully. Click View Analysis to open Chunk Visualization.`,
+          latestDocId: (uploadResponse && uploadResponse[0] && uploadResponse[0].document_id) || undefined,
         });
-      }, 200);
+      } else if (failedDocs.length > 0) {
+        // Some documents failed
+        setInlineNotice({
+          type: 'error',
+          message: `${failedDocs.length} file(s) failed to upload. Please check the document library for details.`,
+        });
+      }
+      
+      // Update progress based on actual processing status
+      if (processingDocs.length > 0) {
+        // Keep showing progress while processing
+        const progressInterval = setInterval(() => {
+          setUploadProgress(prev => {
+            if (prev >= 90) { // Cap at 90% until processing is complete
+              return 90;
+            }
+            return prev + 5;
+          });
+        }, 500);
+        
+        // Clear progress interval when processing is complete
+        setTimeout(() => {
+          clearInterval(progressInterval);
+          setUploadProgress(100);
+          setIsUploading(false);
+          loadData(); // Refresh data after upload
+        }, 10000); // Assume processing takes at most 10 seconds
+      } else {
+        // No processing needed, complete immediately
+        setUploadProgress(100);
+        setIsUploading(false);
+        loadData(); // Refresh data after upload
+      }
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
@@ -126,6 +175,94 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
       setIsUploading(false);
       setUploadProgress(0);
     }
+  };
+
+  const startBatchStatusChecking = (batchId: string, totalFiles: number, latestDocId?: string) => {
+    console.log('Starting batch status checking for:', batchId);
+    
+    // Check immediately first
+    const checkStatus = async () => {
+      try {
+        console.log('Checking batch status...');
+        const response = await apiService.getDocumentBatchStatus(batchId);
+        console.log('Batch status update:', response);
+        setBatchStatus(response);
+        
+        // Update progress based on batch status
+        setUploadProgress(response.overall_progress_percent);
+        
+        // Show processing message when processing starts
+        if (response.status === 'processing' && response.overall_progress_percent > 0) {
+          setInlineNotice({
+            type: 'success',
+            message: `${totalFiles} file(s) uploaded and processing. Please wait for completion...`,
+            latestDocId: latestDocId,
+          });
+        }
+        
+        // Stop checking if processing is complete
+        if (response.overall_progress_percent >= 100 || response.status === 'completed') {
+          console.log('Processing complete, stopping status checks');
+          setIsUploading(false);
+          setUploadProgress(100);
+          
+          if (statusCheckInterval.current) {
+            clearInterval(statusCheckInterval.current);
+            statusCheckInterval.current = null;
+          }
+          
+          // Show completion message
+          const completedCount = response.completed_documents;
+          const failedCount = response.failed_documents;
+          
+          if (failedCount > 0) {
+            setInlineNotice({
+              type: 'error',
+              message: `${completedCount} documents processed successfully, ${failedCount} failed.`,
+            });
+          } else {
+            setInlineNotice({
+              type: 'success',
+              message: `${totalFiles} file(s) uploaded successfully. Click View Analysis to open Chunk Visualization.`,
+              latestDocId: latestDocId,
+            });
+          }
+          
+          // Clear batch status after 3 seconds
+          setTimeout(() => {
+            setBatchStatus(null);
+            setCurrentBatchId(null);
+          }, 3000);
+          
+          loadData(); // Refresh data after upload
+          return false; // Stop checking
+        }
+        return true; // Continue checking
+      } catch (err: any) {
+        console.error('Failed to check batch status:', err);
+        
+        // If it's a 404, the batch might not be created yet or was cleaned up
+        if (err.message && err.message.includes('404')) {
+          console.log('Batch not found (404) - will retry...');
+          return true; // Continue checking, batch might not be created yet
+        }
+        
+        // For other errors, continue checking for a while
+        return true;
+      }
+    };
+    
+    // Check immediately
+    checkStatus();
+    
+    // Then check every 500ms for more responsive updates
+    statusCheckInterval.current = setInterval(async () => {
+      const shouldContinue = await checkStatus();
+      if (!shouldContinue && statusCheckInterval.current) {
+        clearInterval(statusCheckInterval.current);
+        statusCheckInterval.current = null;
+      }
+    }, 500); // Poll every 500ms for better responsiveness
   };
 
   const handleDeleteDocument = async (documentId: string) => {
@@ -205,7 +342,7 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
               : 'Upload and manage policy documents and applications for AI analysis'}
           </p>
         </div>
-        <Button onClick={loadData} variant="outline" disabled={loading}>
+        <Button onClick={() => loadData()} variant="outline" disabled={loading}>
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
@@ -291,9 +428,33 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
 
               {isUploading && (
                 <div className="space-y-2">
-                  <Label>Upload Progress</Label>
+                  <Label>Upload & Processing Progress</Label>
                   <Progress value={uploadProgress} className="w-full" />
-                  <p className="text-sm text-muted-foreground">{uploadProgress}% complete</p>
+                  <p className="text-sm text-muted-foreground">
+                    {uploadProgress < 90 ? 'Uploading and processing document...' : 'Finalizing document processing...'} ({uploadProgress}% complete)
+                  </p>
+                  
+                  {/* Batch processing status display */}
+                  {batchStatus && (
+                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-blue-800">Processing Status</span>
+                        <span className="text-xs text-blue-600">
+                          {batchStatus.completed_documents}/{batchStatus.total_documents} completed
+                        </span>
+                      </div>
+                      {batchStatus.current_processing && batchStatus.current_processing.length > 0 && (
+                        <div className="space-y-1">
+                          {batchStatus.current_processing.map((doc: any, index: number) => (
+                            <div key={index} className="flex items-center justify-between text-xs">
+                              <span className="text-blue-700 truncate">{doc.filename}</span>
+                              <span className="text-blue-600">{doc.stage}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MessageSquare, BarChart3, HelpCircle, FileText, Building2, LayoutDashboard } from 'lucide-react';
+import { MessageSquare, BarChart3, HelpCircle, FileText, LayoutDashboard } from 'lucide-react';
 import { ChatContainer } from '@/components/chat/ChatContainer';
 import { AdminDashboard } from '@/components/admin/AdminDashboard';
 import KnowledgeBaseManager from '@/components/knowledge-base/KnowledgeBaseManager';

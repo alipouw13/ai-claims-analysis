@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from dataclasses import dataclass, asdict
 
-from app.services.multi_agent_orchestrator import MultiAgentOrchestrator, AgentType
+from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator, AgentType
 from app.services.azure_services import AzureServiceManager
 from app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
 from app.core.config import settings

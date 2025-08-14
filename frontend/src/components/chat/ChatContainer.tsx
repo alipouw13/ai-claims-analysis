@@ -45,7 +45,7 @@ export interface SessionInfo {
 
 interface ChatContainerProps {
   modelSettings: ModelSettings;
-  role?: 'admin' | 'underwriter' | 'customer';
+  role?: 'admin' | 'underwriter' | 'customer' | 'analyst';
   domain?: 'insurance' | 'banking';
 }
 
