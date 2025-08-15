@@ -24,6 +24,7 @@ const AppContent = () => {
   const [role, setRole] = useState<Role>('admin');
   const [domain, setDomain] = useState<'insurance' | 'banking'>((localStorage.getItem('domain') as any) || 'insurance');
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [claimsRefreshTrigger, setClaimsRefreshTrigger] = useState(0);
   const [globalModelSettings, setGlobalModelSettings] = useState<ModelSettings>({
     selectedModel: 'gpt-4',
     embeddingModel: 'text-embedding-ada-002',
@@ -38,12 +39,24 @@ const AppContent = () => {
     setGlobalModelSettings(prev => ({ ...prev, ...settings }));
   };
 
+  const handleClaimUploaded = () => {
+    setClaimsRefreshTrigger(prev => prev + 1);
+  };
+
+
+
   const visibleTabs = (
     role === 'customer'
-      ? ['dashboard', 'claims', 'submit', 'ask']
+      ? domain === 'banking'
+        ? ['dashboard', 'chat', 'qa', 'sec-docs']  // Banking customer gets Chat, Q&A, SEC Docs
+        : ['dashboard', 'claims', 'submit', 'ask']  // Insurance customer gets Claims, Submit, Ask
       : domain === 'banking'
-        ? ['dashboard', 'chat', 'qa', 'sec-docs', 'admin']
-        : ['dashboard', 'chat', 'qa', 'documents', 'admin']
+        ? role === 'analyst'
+          ? ['dashboard', 'chat', 'qa', 'sec-docs']
+          : ['dashboard', 'chat', 'qa', 'sec-docs', 'admin']
+        : role === 'analyst'
+          ? ['dashboard', 'chat', 'qa', 'documents']
+          : ['dashboard', 'chat', 'qa', 'documents', 'admin']
   );
 
   return (
@@ -55,12 +68,13 @@ const AppContent = () => {
       <div className="border-b bg-background">
         <div className="flex h-16 items-center px-4">
           {/* Left: Brand and product name */}
-          <div className="flex items-center gap-2">
-            <CitigroupLogo size="md" domain={domain} />
-            <span className="ml-2 text-xs rounded bg-secondary px-2 py-0.5">
-              {role.charAt(0).toUpperCase() + role.slice(1)} Access
-            </span>
-          </div>
+                     <div className="flex items-center gap-2">
+             <CitigroupLogo size="md" domain={domain} />
+             <span className="ml-2 text-xs rounded bg-secondary px-2 py-0.5">
+               {role.charAt(0).toUpperCase() + role.slice(1)} Access
+             </span>
+             
+           </div>
 
           {/* Center nav removed per request */}
 
@@ -75,7 +89,21 @@ const AppContent = () => {
                   onClick={() => {
                     setDomain(d);
                     localStorage.setItem('domain', d);
-                    if (role !== 'customer') setActiveTab(d==='banking' ? 'sec-docs' : 'documents');
+                    // Reset role to appropriate default for the domain
+                    let newRole = role;
+                    if (d === 'banking' && role === 'underwriter') {
+                      newRole = 'analyst';
+                      setRole('analyst');
+                    } else if (d === 'insurance' && role === 'analyst') {
+                      newRole = 'underwriter';
+                      setRole('underwriter');
+                    }
+                    // Handle customer role switching between domains
+                    if (role === 'customer') {
+                      setActiveTab(d === 'banking' ? 'chat' : 'claims');
+                    } else if (newRole !== 'customer') {
+                      setActiveTab(d==='banking' ? 'sec-docs' : 'documents');
+                    }
                   }}
                 >
                   {d.charAt(0).toUpperCase()+d.slice(1)}
@@ -90,7 +118,12 @@ const AppContent = () => {
                   onClick={() => {
                     setRole(r);
                     setTheme(r==='customer' ? 'customer' : 'light');
-                    setActiveTab(r==='customer' ? 'claims' : 'dashboard');
+                    if (r === 'customer') {
+                      // Set appropriate default tab based on domain
+                      setActiveTab(domain === 'banking' ? 'chat' : 'claims');
+                    } else {
+                      setActiveTab('dashboard');
+                    }
                   }}
                 >
                   {r.charAt(0).toUpperCase()+r.slice(1)}
@@ -163,7 +196,7 @@ const AppContent = () => {
         </div>
       </div>
 
-      {/* Global Model Configuration */}
+      {/* Global Model Configuration - Hidden for all customers */}
       {role !== 'customer' && (
         <ModelConfiguration
         settings={globalModelSettings}
@@ -203,21 +236,23 @@ const AppContent = () => {
             <AdminDashboard isActive={activeTab === 'admin'} />
           </TabsContent>
 
-          {/* Customer persona */}
-          <TabsContent value="claims" className="m-0 bg-background">
-            <ClaimsSummary />
-          </TabsContent>
-          <TabsContent value="submit" className="m-0 bg-background">
-            <SubmitClaim />
-          </TabsContent>
-          <TabsContent value="ask" className="m-0 bg-background">
-            <AskClaims settings={globalModelSettings} />
-          </TabsContent>
-        </Tabs>
-      </main>
-    </div>
-  );
-};
+                     {/* Customer persona */}
+                       <TabsContent value="claims" className="m-0 bg-background">
+              <ClaimsSummary key={claimsRefreshTrigger} />
+            </TabsContent>
+                      <TabsContent value="submit" className="m-0 bg-background">
+              <SubmitClaim onClaimUploaded={handleClaimUploaded} />
+            </TabsContent>
+                     <TabsContent value="ask" className="m-0 bg-background">
+             <AskClaims settings={globalModelSettings} />
+           </TabsContent>
+         </Tabs>
+       </main>
+
+       
+     </div>
+   );
+ };
 
 function App() {
   return (

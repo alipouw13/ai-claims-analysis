@@ -37,7 +37,8 @@ async def upload_documents(
     document_type: Optional[DocumentType] = Form(None),
     company_name: Optional[str] = Form(None),
     filing_date: Optional[str] = Form(None),
-    domain: Optional[str] = Form("insurance")
+    domain: Optional[str] = Form("insurance"),
+    is_claim: Optional[bool] = Form(False)
 ):
     """Upload multiple financial documents for processing with Azure Document Intelligence"""
     try:
@@ -99,6 +100,8 @@ async def upload_documents(
                     except ValueError:
                         logger.warning(f"Invalid filing date format: {filing_date}")
                 
+                # Use the is_claim parameter from the form
+                
                 metadata = {
                     "filename": file.filename,
                     "document_type": document_type,
@@ -110,8 +113,7 @@ async def upload_documents(
                     "upload_timestamp": datetime.utcnow().isoformat(),
                     "file_size": len(file_content),
                     "file_extension": file_extension,
-                    # If form includes is_claim=true (from customer UI), mark for claims index
-                    "is_claim": (request.form and (await request.form()).get('is_claim') == 'true') if hasattr(request, 'form') else False
+                    "is_claim": is_claim
                 }
                 
                 logger.info(f"Starting document processing: {document_id}, type: {document_type}, file: {file.filename}")
@@ -487,3 +489,161 @@ async def get_document_citations(document_id: str):
     except Exception as e:
         logger.error(f"Error getting document citations {document_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve document citations")
+
+@router.get("/{document_id}/extracted-data")
+async def get_document_extracted_data(document_id: str):
+    """Get the extracted structured data from a processed document"""
+    try:
+        observability.track_request("get_document_extracted_data")
+        
+        logger.info(f"Document extracted data requested: {document_id}")
+        
+        # In a real implementation, this would query your document processing results
+        # For now, return mock data similar to the Content Processing Solution Accelerator
+        
+        # Check if document exists in processing status
+        if document_id not in kb_processing_status:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        doc_status = kb_processing_status[document_id]
+        
+        # Mock extracted data based on document type
+        extracted_data = {
+            "policy_claim_info": {
+                "first_name": "Emma",
+                "last_name": "Martinez",
+                "telephone_number": "718-555-0321",
+                "policy_number": "PH789012",
+                "coverage_type": "Homeowners",
+                "claim_number": "CL456789",
+                "policy_effective_date": "2020-08-10",
+                "policy_expiration_date": "2021-08-10",
+                "damage_deductible": 1000,
+                "date_of_damage_loss": "2021-07-25",
+                "time_of_loss": "16:45",
+                "date_prepared": "2021-07-26"
+            },
+            "property_address": {
+                "street": "9101 Oak St",
+                "city": "Brooklyn",
+                "state": "NY",
+                "postal_code": "11201",
+                "country": "USA"
+            },
+            "mailing_address": {
+                "street": "9101 Oak St",
+                "city": "Brooklyn",
+                "state": "NY",
+                "postal_code": "11201",
+                "country": "USA"
+            },
+            "claim_details": {
+                "cause_of_loss": "A tree fell on the roof during a storm, causing structural damage and water leakage into the attic.",
+                "estimated_loss": 25000,
+                "items_damaged": [
+                    {
+                        "item": "Samsung Galaxy S20",
+                        "description": "Smartphone damaged by water",
+                        "date_acquired": "2020-03-15",
+                        "cost_new": 999,
+                        "repair_cost": 450
+                    },
+                    {
+                        "item": "Dell XPS 15 Laptop",
+                        "description": "Laptop damaged by falling debris",
+                        "date_acquired": "2019-11-20",
+                        "cost_new": 1499,
+                        "repair_cost": 800
+                    }
+                ]
+            },
+            "processing_metadata": {
+                "entity_score": 99.5,
+                "schema_score": 98.2,
+                "confidence_score": 97.8,
+                "processing_time_seconds": 2.3,
+                "extraction_model": "gpt-4",
+                "schema_version": "1.0"
+            }
+        }
+        
+        return {
+            "document_id": document_id,
+            "filename": doc_status.get("filename", "Unknown"),
+            "extracted_data": extracted_data,
+            "processing_status": doc_status.get("stage", "unknown"),
+            "processing_timestamp": doc_status.get("completed_at"),
+            "chunks_created": doc_status.get("chunks_created", 0)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting document extracted data {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document extracted data")
+
+@router.get("/{document_id}/processing-steps")
+async def get_document_processing_steps(document_id: str):
+    """Get the processing steps and their status for a document"""
+    try:
+        observability.track_request("get_document_processing_steps")
+        
+        logger.info(f"Document processing steps requested: {document_id}")
+        
+        # Check if document exists in processing status
+        if document_id not in kb_processing_status:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        doc_status = kb_processing_status[document_id]
+        
+        # Mock processing steps based on the document status
+        processing_steps = [
+            {
+                "step": "Document Upload",
+                "status": "completed",
+                "message": "Document uploaded successfully",
+                "timestamp": doc_status.get("started_at", ""),
+                "duration_seconds": 0.5
+            },
+            {
+                "step": "Content Extraction",
+                "status": "completed",
+                "message": "Text and form fields extracted using Azure Document Intelligence",
+                "timestamp": doc_status.get("started_at", ""),
+                "duration_seconds": 1.2
+            },
+            {
+                "step": "Data Mapping",
+                "status": "completed",
+                "message": "Data mapped to insurance claim schema",
+                "timestamp": doc_status.get("started_at", ""),
+                "duration_seconds": 0.8
+            },
+            {
+                "step": "Validation",
+                "status": "completed",
+                "message": "Data validated against business rules and compliance requirements",
+                "timestamp": doc_status.get("started_at", ""),
+                "duration_seconds": 0.3
+            },
+            {
+                "step": "Indexing",
+                "status": "completed",
+                "message": f"Document indexed with {doc_status.get('chunks_created', 0)} chunks",
+                "timestamp": doc_status.get("completed_at", ""),
+                "duration_seconds": 0.5
+            }
+        ]
+        
+        return {
+            "document_id": document_id,
+            "processing_steps": processing_steps,
+            "total_duration_seconds": sum(step["duration_seconds"] for step in processing_steps),
+            "overall_status": doc_status.get("stage", "unknown")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting document processing steps {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document processing steps")

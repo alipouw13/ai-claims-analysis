@@ -1,13 +1,364 @@
 {
   "mcpServers": {
-    "financial-rag": {
+    "financial-rag-server": {
       "command": "python",
-      "args": [
-        "d:/repos/agenticrag/mcp_server/main.py"
-      ],
+      "args": ["main.py"],
       "env": {
-        "PYTHONPATH": "d:/repos/agenticrag"
+        "PYTHONPATH": "../backend"
+      },
+      "description": "Financial RAG MCP Server with Insurance Agent Support",
+      "capabilities": {
+        "tools": true,
+        "resources": true,
+        "prompts": true,
+        "logging": true
       }
     }
+  },
+  "tools": {
+    "answer_financial_question": {
+      "description": "Answer financial questions using RAG and multi-agent system",
+      "parameters": {
+        "question": {
+          "type": "string",
+          "description": "Financial question to answer",
+          "required": true
+        },
+        "context": {
+          "type": "string",
+          "description": "Additional context for the question",
+          "required": false
+        },
+        "verification_level": {
+          "type": "string",
+          "enum": ["basic", "thorough", "comprehensive"],
+          "description": "Level of verification and analysis",
+          "default": "thorough"
+        },
+        "use_multi_agent": {
+          "type": "boolean",
+          "description": "Whether to use multi-agent orchestration",
+          "default": true
+        }
+      }
+    },
+    "search_financial_documents": {
+      "description": "Search financial documents in the knowledge base",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "Search query",
+          "required": true
+        },
+        "top_k": {
+          "type": "integer",
+          "description": "Number of results to return",
+          "default": 10
+        },
+        "filters": {
+          "type": "object",
+          "description": "Search filters",
+          "default": {}
+        }
+      }
+    },
+    "verify_source_credibility": {
+      "description": "Verify the credibility of information sources",
+      "parameters": {
+        "content": {
+          "type": "string",
+          "description": "Content to verify",
+          "required": true
+        },
+        "sources": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of sources to check against",
+          "required": false
+        }
+      }
+    },
+    "get_knowledge_base_stats": {
+      "description": "Get statistics about the knowledge base",
+      "parameters": {}
+    },
+    "coordinate_multi_agent_analysis": {
+      "description": "Coordinate multiple agents for comprehensive financial analysis",
+      "parameters": {
+        "request_type": {
+          "type": "string",
+          "description": "Type of analysis request",
+          "required": true
+        },
+        "content": {
+          "type": "string",
+          "description": "Content or question to analyze",
+          "required": true
+        },
+        "requirements": {
+          "type": "object",
+          "description": "Specific requirements for the analysis",
+          "default": {}
+        }
+      }
+    },
+    "deploy_insurance_agent": {
+      "description": "Deploy a domain-specific insurance agent",
+      "parameters": {
+        "agent_name": {
+          "type": "string",
+          "description": "Name for the deployed agent",
+          "required": true
+        },
+        "agent_type": {
+          "type": "string",
+          "enum": ["auto", "life", "health", "dental", "general"],
+          "description": "Type of insurance agent to deploy",
+          "required": true
+        },
+        "tools": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Tools to enable for the agent",
+          "default": ["azure_search", "knowledge_base", "code_interpreter"]
+        },
+        "instructions": {
+          "type": "string",
+          "description": "Custom instructions for the agent",
+          "default": ""
+        }
+      }
+    },
+    "process_insurance_claim": {
+      "description": "Process insurance claims using specialized agents",
+      "parameters": {
+        "domain": {
+          "type": "string",
+          "enum": ["auto", "life", "health", "dental", "general"],
+          "description": "Insurance domain",
+          "required": true
+        },
+        "claim_type": {
+          "type": "string",
+          "description": "Type of claim (e.g., collision, medical, death)",
+          "required": true
+        },
+        "claim_data": {
+          "type": "object",
+          "description": "Claim details and documentation",
+          "required": true
+        },
+        "parallel_execution": {
+          "type": "boolean",
+          "description": "Whether to use parallel agent execution",
+          "default": true
+        }
+      }
+    },
+    "analyze_insurance_policy": {
+      "description": "Analyze insurance policies using domain-specific agents",
+      "parameters": {
+        "domain": {
+          "type": "string",
+          "enum": ["auto", "life", "health", "dental", "general"],
+          "description": "Insurance domain",
+          "required": true
+        },
+        "policy_data": {
+          "type": "object",
+          "description": "Policy information and coverage details",
+          "required": true
+        },
+        "analysis_type": {
+          "type": "string",
+          "enum": ["basic", "comprehensive", "risk_assessment"],
+          "description": "Type of analysis to perform",
+          "default": "comprehensive"
+        },
+        "parallel_execution": {
+          "type": "boolean",
+          "description": "Whether to use parallel agent execution",
+          "default": true
+        }
+      }
+    },
+    "get_insurance_agent_status": {
+      "description": "Get status and health of insurance agents",
+      "parameters": {
+        "agent_name": {
+          "type": "string",
+          "description": "Name of the agent to check",
+          "default": ""
+        }
+      }
+    }
+  },
+  "resources": {
+    "financial://knowledge-base/statistics": {
+      "name": "Knowledge Base Statistics",
+      "description": "Current statistics and health metrics of the financial knowledge base",
+      "mimeType": "application/json"
+    },
+    "financial://agents/capabilities": {
+      "name": "Agent Capabilities",
+      "description": "List of all available agent capabilities and their schemas",
+      "mimeType": "application/json"
+    },
+    "financial://documents/types": {
+      "name": "Document Types",
+      "description": "Available financial document types in the knowledge base",
+      "mimeType": "application/json"
+    },
+    "financial://system/status": {
+      "name": "System Status",
+      "description": "Current status of the financial RAG system",
+      "mimeType": "application/json"
+    },
+    "insurance://agents/status": {
+      "name": "Insurance Agent Status",
+      "description": "Current status and health of all insurance agents",
+      "mimeType": "application/json"
+    },
+    "insurance://policies/types": {
+      "name": "Insurance Policy Types",
+      "description": "Available insurance policy types and their schemas",
+      "mimeType": "application/json"
+    },
+    "insurance://claims/types": {
+      "name": "Insurance Claim Types",
+      "description": "Available insurance claim types and their processing workflows",
+      "mimeType": "application/json"
+    },
+    "insurance://orchestrator/status": {
+      "name": "Insurance Orchestrator Status",
+      "description": "Current status of the insurance agent orchestrator",
+      "mimeType": "application/json"
+    }
+  },
+  "prompts": {
+    "financial_analysis": {
+      "description": "Template for comprehensive financial analysis",
+      "arguments": [
+        {
+          "name": "company",
+          "description": "Company name or ticker symbol",
+          "required": true
+        },
+        {
+          "name": "analysis_type",
+          "description": "Type of analysis (risk, performance, comparison, etc.)",
+          "required": false
+        }
+      ]
+    },
+    "risk_assessment": {
+      "description": "Template for financial risk assessment",
+      "arguments": [
+        {
+          "name": "companies",
+          "description": "List of companies to assess",
+          "required": true
+        },
+        {
+          "name": "risk_factors",
+          "description": "Specific risk factors to focus on",
+          "required": false
+        }
+      ]
+    },
+    "insurance_policy_analysis": {
+      "description": "Template for insurance policy analysis",
+      "arguments": [
+        {
+          "name": "domain",
+          "description": "Insurance domain (auto, life, health, dental, general)",
+          "required": true
+        },
+        {
+          "name": "policy_data",
+          "description": "Policy information and coverage details",
+          "required": true
+        },
+        {
+          "name": "analysis_type",
+          "description": "Type of analysis (basic, comprehensive, risk_assessment)",
+          "required": false
+        }
+      ]
+    },
+    "insurance_claim_processing": {
+      "description": "Template for insurance claim processing",
+      "arguments": [
+        {
+          "name": "domain",
+          "description": "Insurance domain (auto, life, health, dental, general)",
+          "required": true
+        },
+        {
+          "name": "claim_type",
+          "description": "Type of claim (collision, medical, death, etc.)",
+          "required": true
+        },
+        {
+          "name": "claim_data",
+          "description": "Claim details and documentation",
+          "required": true
+        }
+      ]
+    }
+  },
+  "streaming": {
+    "enabled": true,
+    "protocols": ["http", "websocket", "sse"],
+    "supported_methods": [
+      "answer_financial_question",
+      "search_financial_documents",
+      "coordinate_multi_agent_analysis",
+      "process_insurance_claim",
+      "analyze_insurance_policy",
+      "deploy_insurance_agent"
+    ]
+  },
+  "insurance_agents": {
+    "domains": {
+      "auto": {
+        "description": "Automobile insurance processing",
+        "claim_types": ["collision", "comprehensive", "liability", "medical"],
+        "agents": ["auto_collision_agent", "auto_liability_agent", "auto_comprehensive_agent"]
+      },
+      "life": {
+        "description": "Life insurance processing",
+        "claim_types": ["death", "disability", "surrender"],
+        "agents": ["life_death_agent", "life_disability_agent", "life_surrender_agent"]
+      },
+      "health": {
+        "description": "Health insurance processing",
+        "claim_types": ["medical", "prescription", "preventive"],
+        "agents": ["health_medical_agent", "health_prescription_agent", "health_preventive_agent"]
+      },
+      "dental": {
+        "description": "Dental insurance processing",
+        "claim_types": ["preventive", "basic", "major"],
+        "agents": ["dental_preventive_agent", "dental_basic_agent", "dental_major_agent"]
+      },
+      "general": {
+        "description": "General insurance processing",
+        "claim_types": ["property", "casualty", "professional"],
+        "agents": ["general_property_agent", "general_casualty_agent", "general_professional_agent"]
+      }
+    },
+    "orchestration": {
+      "framework": "semantic_kernel",
+      "parallel_execution": true,
+      "agent_communication": "event_based",
+      "workflow_management": "state_machine"
+    }
+  },
+  "server_info": {
+    "name": "financial-rag-server",
+    "version": "1.0.0",
+    "description": "Financial Question Answering using RAG and Multi-Agent System with Insurance Support",
+    "author": "AgenticRAG Team",
+    "license": "MIT"
   }
 }

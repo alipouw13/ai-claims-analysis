@@ -118,7 +118,7 @@ class ApiService {
       formData.append('filing_date', request.filing_date);
     }
     // Optional hint for claims uploads
-    if ((request as any).is_claim) {
+    if (request.is_claim) {
       formData.append('is_claim', 'true');
     }
     // Domain information for routing to correct knowledge base
@@ -468,6 +468,32 @@ class ApiService {
     status: string; // "processing", "completed", "failed"
   }> {
     return this.makeRequest(`/documents/batch/${batchId}/status`);
+  }
+
+  async getDocumentExtractedData(documentId: string): Promise<{
+    document_id: string;
+    filename: string;
+    extracted_data: any;
+    processing_status: string;
+    processing_timestamp?: string;
+    chunks_created: number;
+  }> {
+    return this.makeRequest(`/documents/${documentId}/extracted-data`);
+  }
+
+  async getDocumentProcessingSteps(documentId: string): Promise<{
+    document_id: string;
+    processing_steps: Array<{
+      step: string;
+      status: string;
+      message: string;
+      timestamp: string;
+      duration_seconds: number;
+    }>;
+    total_duration_seconds: number;
+    overall_status: string;
+  }> {
+    return this.makeRequest(`/documents/${documentId}/processing-steps`);
   }
 
   async deleteSECDocument(documentId: string): Promise<{

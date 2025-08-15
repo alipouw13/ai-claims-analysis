@@ -1,281 +1,340 @@
-# Enhanced Financial RAG MCP Server
+# Financial RAG MCP Server
 
-This directory contains an enhanced Model Context Protocol (MCP) server implementation that extends the AgenticRAG system with multiple communication protocols and streaming capabilities.
+A Model Context Protocol (MCP) server for financial question answering using our RAG system with advanced multi-agent orchestration and insurance domain support.
 
-## 🚀 Features
+## Overview
 
-### Multiple Protocol Support
-- **Stdin/Stdout**: Original MCP protocol for Claude Desktop and similar clients
-- **HTTP JSON-RPC**: REST API for web applications and services
-- **Server-Sent Events (SSE)**: Real-time streaming for long-running operations
-- **WebSocket**: Bidirectional communication for interactive applications
+This MCP server implements the Model Context Protocol specification and provides comprehensive financial analysis capabilities through:
 
-### Streaming Capabilities
-- Real-time progress updates for financial analysis
-- Incremental results for document searches
-- Multi-agent coordination with step-by-step progress
-- Partial result delivery for improved user experience
+- **Multi-Agent Orchestration**: Coordinated processing using specialized agents
+- **Insurance Domain Support**: Domain-specific agents for auto, life, health, dental, and general insurance
+- **Streaming Responses**: Real-time progress updates for long-running operations
+- **Multiple Protocols**: Support for stdio, HTTP, WebSocket, and Server-Sent Events (SSE)
 
-### Claude-Compatible Interface
-- Tool discovery and usage patterns compatible with Claude
-- Standardized response formats
-- Error handling and retry logic
-- Streaming support for external AI assistants
+## Features
 
-## 📁 Files
+### 🤖 Multi-Agent System
+- **QA Agent**: Financial question answering with source verification
+- **Document Processor**: Intelligent document analysis and extraction
+- **Financial Analyzer**: Risk assessment and performance analysis
+- **Insurance Agents**: Domain-specific insurance processing
 
-| File | Description |
-|------|-------------|
-| `main.py` | Original MCP server (stdin/stdout) |
-| `streaming_mcp_server.py` | Enhanced server with HTTP/WebSocket/SSE support |
-| `http_client.py` | HTTP client and Claude-compatible interface |
-| `test_enhanced_mcp.py` | Comprehensive test suite for all protocols |
-| `mcp_discovery_config.json` | Configuration for client discovery |
-| `requirements.txt` | Dependencies for streaming server |
+### 🏥 Insurance Domain Support
+- **Auto Insurance**: Vehicle collision, comprehensive, liability claims
+- **Life Insurance**: Death benefit, disability, surrender claims
+- **Health Insurance**: Medical treatment, prescription, preventive care
+- **Dental Insurance**: Preventive, basic, major dental procedures
+- **General Insurance**: Property, casualty, professional liability
 
-## 🛠 Installation
+### 📡 Streaming Capabilities
+- **Real-time Progress**: Live updates during processing
+- **Incremental Results**: Partial results as they become available
+- **Multiple Protocols**: HTTP, WebSocket, and SSE support
 
-1. Install dependencies:
+## Installation
+
+### Prerequisites
+- Python 3.8+
+- Azure OpenAI Service
+- Azure AI Search
+- Required environment variables (see Configuration)
+
+### Setup
 ```bash
-pip install -r requirements.txt
+# Clone the repository
+git clone <repository-url>
+cd agenticrag
+
+# Install dependencies
+pip install -r mcp_server/requirements.txt
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your Azure credentials
 ```
 
-2. Ensure the backend system is configured and running.
+## Configuration
 
-## 🎯 Usage
-
-### 1. Stdin/Stdout Mode (Original MCP)
-
-For Claude Desktop or other MCP clients:
-
+### Environment Variables
 ```bash
-python main.py
+# Azure OpenAI
+AZURE_OPENAI_ENDPOINT=your-endpoint
+AZURE_OPENAI_API_KEY=your-api-key
+
+# Azure AI Search
+AZURE_SEARCH_ENDPOINT=your-search-endpoint
+AZURE_SEARCH_API_KEY=your-search-key
+
+# Azure Authentication
+AZURE_TENANT_ID=your-tenant-id
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
 ```
 
-**Claude Desktop Configuration:**
+### MCP Configuration
+The server supports multiple configuration files:
+- `.env.backend`: Backend service configuration
+- `.env.mcp`: MCP-specific settings
+- `mcp_config.json`: MCP server configuration
+
+## Usage
+
+### Command Line Interface
+
+#### Stdio Mode (MCP Standard)
+```bash
+cd mcp_server
+python main.py --mode stdio
+```
+
+#### HTTP Server Mode
+```bash
+cd mcp_server
+python streaming_mcp_server.py --mode http --host 127.0.0.1 --port 8000
+```
+
+### Available Tools
+
+#### Financial Analysis
 ```json
 {
-  "mcpServers": {
-    "financial-rag": {
-      "command": "python",
-      "args": ["path/to/agenticrag/mcp_server/main.py"],
-      "env": {
-        "PYTHONPATH": "path/to/agenticrag"
-      }
-    }
+  "name": "answer_financial_question",
+  "arguments": {
+    "question": "What are the key risk factors for Microsoft?",
+    "verification_level": "thorough",
+    "use_multi_agent": true
   }
 }
 ```
 
-### 2. HTTP Server Mode
-
-For web applications and REST API access:
-
-```bash
-python streaming_mcp_server.py --mode http --port 8000
-```
-
-**API Endpoints:**
-- `POST /mcp/rpc` - JSON-RPC requests
-- `POST /mcp/stream` - Server-Sent Events streaming
-- `WS /mcp/ws` - WebSocket connection
-- `GET /mcp/info` - Server information and capabilities
-- `GET /health` - Health check
-
-### 3. Client Usage Examples
-
-#### HTTP Client
-```python
-from http_client import MCPHTTPClient
-
-async with MCPHTTPClient("http://localhost:8000") as client:
-    # Basic question answering
-    result = await client.answer_financial_question(
-        question="What are Apple's main revenue streams?",
-        verification_level="thorough"
-    )
-    
-    # Streaming analysis
-    async for update in client.stream_request("answer_financial_question", {
-        "question": "Analyze Microsoft's financial performance",
-        "use_multi_agent": True
-    }):
-        print(f"Progress: {update}")
-```
-
-#### Claude-Compatible Interface
-```python
-from http_client import ClaudeCompatibleMCPClient
-
-claude_client = ClaudeCompatibleMCPClient()
-await claude_client.initialize()
-
-# Use tools like Claude would
-result = await claude_client.use_tool(
-    "answer_financial_question",
-    {"question": "What is Amazon's business model?"}
-)
-```
-
-## 🔧 Available Tools
-
-### Core Financial Tools
-
-1. **answer_financial_question**
-   - Comprehensive financial Q&A with RAG
-   - Multi-agent coordination
-   - Source verification and credibility assessment
-   - **Streaming Support**: ✅
-
-2. **search_financial_documents**
-   - Knowledge base document search
-   - Document type filtering
-   - Relevance ranking
-   - **Streaming Support**: ✅
-
-3. **verify_source_credibility**
-   - Source reliability assessment
-   - Cross-reference validation
-   - Confidence scoring
-   - **Streaming Support**: ❌
-
-4. **coordinate_multi_agent_analysis**
-   - Complex financial analysis coordination
-   - Agent workflow orchestration
-   - Distributed processing
-   - **Streaming Support**: ✅
-
-5. **get_knowledge_base_stats**
-   - Knowledge base health metrics
-   - Document statistics
-   - System status
-   - **Streaming Support**: ❌
-
-## 📊 Resources
-
-- `financial://knowledge-base/statistics` - KB statistics
-- `financial://agents/capabilities` - Agent capabilities
-- `financial://documents/types` - Available document types
-- `financial://system/status` - System status
-
-## 🎭 Prompts
-
-- `financial_analysis` - Comprehensive financial analysis template
-- `risk_assessment` - Financial risk assessment template
-- `market_comparison` - Market comparison analysis template
-
-## 🧪 Testing
-
-Run the comprehensive test suite:
-
-```bash
-python test_enhanced_mcp.py
-```
-
-This tests:
-- ✅ Stdin/stdout protocol
-- ✅ HTTP JSON-RPC protocol
-- ✅ SSE streaming protocol
-- ✅ WebSocket protocol
-- ✅ Claude-compatible interface
-
-## 🌐 Integration Examples
-
-### VS Code Extension
-
-```typescript
-// Connect to MCP server via HTTP
-const response = await fetch('http://localhost:8000/mcp/rpc', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    jsonrpc: '2.0',
-    id: 'vscode-req-1',
-    method: 'answer_financial_question',
-    params: {
-      question: 'What are Tesla\'s competitive advantages?',
-      verification_level: 'thorough'
-    }
-  })
-});
-```
-
-### Web Application with Streaming
-
-```javascript
-// Server-Sent Events for real-time updates
-const eventSource = new EventSource('/mcp/stream', {
-  method: 'POST',
-  body: JSON.stringify({
-    method: 'answer_financial_question',
-    params: { question: 'Analyze Apple vs Microsoft' }
-  })
-});
-
-eventSource.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  if (data.type === 'progress') {
-    updateProgress(data.message);
-  } else if (data.type === 'result') {
-    displayResult(data.data);
+#### Document Search
+```json
+{
+  "name": "search_financial_documents",
+  "arguments": {
+    "query": "quarterly earnings",
+    "top_k": 10,
+    "filters": {"document_type": ["10-K", "10-Q"]}
   }
+}
+```
+
+#### Insurance Claim Processing
+```json
+{
+  "name": "process_insurance_claim",
+  "arguments": {
+    "domain": "auto",
+    "claim_type": "collision",
+    "claim_data": {
+      "vehicle_info": {...},
+      "damage_details": {...},
+      "witness_statements": [...]
+    },
+    "parallel_execution": true
+  }
+}
+```
+
+#### Insurance Policy Analysis
+```json
+{
+  "name": "analyze_insurance_policy",
+  "arguments": {
+    "domain": "life",
+    "policy_data": {
+      "coverage_type": "term",
+      "coverage_amount": 500000,
+      "beneficiary_info": {...}
+    },
+    "analysis_type": "comprehensive"
+  }
+}
+```
+
+#### Agent Deployment
+```json
+{
+  "name": "deploy_insurance_agent",
+  "arguments": {
+    "agent_name": "auto_claims_specialist",
+    "agent_type": "auto",
+    "tools": ["azure_search", "knowledge_base", "code_interpreter"],
+    "instructions": "Specialize in auto insurance claim processing"
+  }
+}
+```
+
+### Available Resources
+
+#### Financial Resources
+- `financial://knowledge-base/statistics`: Knowledge base metrics
+- `financial://agents/capabilities`: Agent capabilities
+- `financial://documents/types`: Available document types
+- `financial://system/status`: System health status
+
+#### Insurance Resources
+- `insurance://agents/status`: Insurance agent status
+- `insurance://policies/types`: Policy type schemas
+- `insurance://claims/types`: Claim processing workflows
+- `insurance://orchestrator/status`: Orchestrator health
+
+### Available Prompts
+
+#### Financial Prompts
+- `financial_analysis`: Comprehensive company analysis
+- `risk_assessment`: Multi-company risk evaluation
+
+#### Insurance Prompts
+- `insurance_policy_analysis`: Policy coverage assessment
+- `insurance_claim_processing`: Claim validation and processing
+
+## API Endpoints
+
+### HTTP Endpoints
+- `POST /mcp/rpc`: Standard MCP JSON-RPC
+- `POST /mcp/stream`: Streaming responses with SSE
+- `POST /mcp/tools/call`: Direct tool invocation
+- `GET /mcp/info`: Server information
+- `GET /health`: Health check
+
+### WebSocket Endpoints
+- `WS /mcp/ws`: Bidirectional communication
+
+## Streaming Support
+
+### Server-Sent Events (SSE)
+```javascript
+const eventSource = new EventSource('/mcp/stream');
+eventSource.onmessage = function(event) {
+  const data = JSON.parse(event.data);
+  console.log('Progress:', data.step, data.message);
 };
 ```
 
-### Claude Integration
+### WebSocket Streaming
+```javascript
+const ws = new WebSocket('ws://localhost:8000/mcp/ws');
+ws.send(JSON.stringify({
+  id: 'request-1',
+  method: 'answer_financial_question',
+  params: { question: 'What are the risks?' },
+  stream: true
+}));
+```
 
-Claude can discover and use the MCP server automatically when configured in the desktop app. The server exposes financial analysis capabilities as tools that Claude can use to answer user questions about finance and markets.
+## Insurance Agent Architecture
 
-## 🔒 Security Considerations
+### Domain-Specific Agents
+Each insurance domain has specialized agents:
 
-- The HTTP server binds to localhost by default
-- No authentication is implemented (add as needed)
-- CORS is enabled for development (configure for production)
-- Consider rate limiting for production deployments
+#### Auto Insurance
+- **Collision Agent**: Vehicle damage assessment
+- **Liability Agent**: Third-party claims processing
+- **Comprehensive Agent**: Non-collision damage
 
-## 📈 Performance
+#### Life Insurance
+- **Death Benefit Agent**: Death claim processing
+- **Disability Agent**: Disability benefit assessment
+- **Surrender Agent**: Policy surrender evaluation
 
-### Streaming Benefits
-- Reduced perceived latency for long operations
-- Real-time feedback on analysis progress
-- Ability to cancel long-running operations
-- Better user experience for complex queries
+#### Health Insurance
+- **Medical Agent**: Treatment claim processing
+- **Prescription Agent**: Drug claim validation
+- **Preventive Agent**: Preventive care assessment
 
-### Scalability
-- Multiple protocol support enables different client types
-- WebSocket connections for high-frequency interactions
-- HTTP for stateless requests
-- Stdin/stdout for traditional MCP clients
+#### Dental Insurance
+- **Preventive Agent**: Routine dental care
+- **Basic Agent**: Basic procedure claims
+- **Major Agent**: Major dental procedures
 
-## 🚀 Future Enhancements
+#### General Insurance
+- **Property Agent**: Property damage claims
+- **Casualty Agent**: Casualty claim processing
+- **Professional Agent**: Professional liability
 
-1. **Authentication & Authorization**
-   - API key authentication
-   - Role-based access control
-   - Rate limiting
+### Agent Orchestration
+The system uses Semantic Kernel for advanced orchestration:
 
-2. **Advanced Streaming**
-   - Cancellable operations
-   - Resumable requests
-   - Batch processing
+```python
+# Agent coordination example
+orchestrator = SemanticKernelInsuranceOrchestrator()
+await orchestrator.coordinate_agents({
+    "type": "complex_claim",
+    "content": claim_data,
+    "requirements": {"parallel": True, "verification": "thorough"}
+})
+```
 
-3. **Monitoring & Observability**
-   - Metrics collection
-   - Distributed tracing
-   - Performance monitoring
+## Development
 
-4. **Multi-Instance Support**
-   - Load balancing
-   - Service discovery
-   - High availability
+### Adding New Insurance Agents
+1. Define agent capabilities in `insurance_agents.py`
+2. Add agent type to the orchestrator
+3. Update MCP tools and resources
+4. Add streaming support if needed
 
-## 📚 Protocol Specifications
+### Testing
+```bash
+# Test stdio mode
+echo '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}' | python main.py
 
-- [Model Context Protocol (MCP)](https://spec.modelcontextprotocol.io/)
-- [JSON-RPC 2.0](https://www.jsonrpc.org/specification)
-- [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
-- [WebSocket Protocol](https://tools.ietf.org/html/rfc6455)
+# Test HTTP mode
+curl -X POST http://localhost:8000/mcp/rpc \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+```
 
----
+### Debugging
+```bash
+# Enable debug logging
+python streaming_mcp_server.py --mode http --debug
 
-**Ready for production use with Claude, VS Code extensions, web applications, and any MCP-compatible client!**
+# Check server status
+curl http://localhost:8000/health
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Import Errors
+- Ensure all dependencies are installed
+- Check Python path includes backend directory
+- Verify environment variables are set
+
+#### Azure Connection Issues
+- Validate Azure credentials
+- Check network connectivity
+- Verify service endpoints
+
+#### Agent Initialization Failures
+- Check agent configuration
+- Verify Semantic Kernel setup
+- Review orchestrator logs
+
+### Logging
+The server provides detailed logging at multiple levels:
+- **ERROR**: Critical failures and exceptions
+- **INFO**: General operation information
+- **DEBUG**: Detailed debugging information
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Update documentation
+5. Submit a pull request
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Support
+
+For issues and questions:
+- Check the troubleshooting section
+- Review the logs for error details
+- Open an issue on GitHub
+- Contact the development team

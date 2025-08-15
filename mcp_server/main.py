@@ -32,6 +32,8 @@ try:
     from backend.app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
     from backend.app.services.multi_agent_orchestrator import MultiAgentOrchestrator, AgentType
     from backend.app.services.rag_pipeline import RAGPipeline
+    from backend.app.services.agents.multi_agent_insurance_orchestrator import SemanticKernelInsuranceOrchestrator
+    from backend.app.services.agents.insurance_agents import create_insurance_agent
     from backend.app.core.config import settings
 except ImportError as e:
     print(f"❌ Import error: {e}")
@@ -70,13 +72,14 @@ class FinancialRAGMCPServer:
         self.kb_manager: Optional[AdaptiveKnowledgeBaseManager] = None
         self.orchestrator: Optional[MultiAgentOrchestrator] = None
         self.rag_pipeline: Optional[RAGPipeline] = None
+        self.insurance_orchestrator: Optional[SemanticKernelInsuranceOrchestrator] = None
         self.initialized = False
         
         # MCP server info
         self.server_info = {
             "name": "financial-rag-server",
             "version": "1.0.0",
-            "description": "Financial Question Answering using RAG and Multi-Agent System",
+            "description": "Financial Question Answering using RAG and Multi-Agent System with Insurance Support",
             "author": "AgenticRAG Team",
             "license": "MIT",
             "capabilities": {
@@ -100,30 +103,36 @@ class FinancialRAGMCPServer:
             self.kb_manager = AdaptiveKnowledgeBaseManager(self.azure_manager)
             
             # Initialize multi-agent orchestrator
-            self.orchestrator = MultiAgentOrchestrator(self.azure_manager, self.kb_manager)
+            self.orchestrator = MultiAgentOrchestrator(self.azure_manager)
+            await self.orchestrator.initialize()
             
-            # Initialize RAG pipeline (requires kb_manager parameter)
-            self.rag_pipeline = RAGPipeline(self.azure_manager, self.kb_manager)
+            # Initialize RAG pipeline
+            self.rag_pipeline = RAGPipeline(self.azure_manager)
+            await self.rag_pipeline.initialize()
+            
+            # Initialize insurance orchestrator
+            self.insurance_orchestrator = SemanticKernelInsuranceOrchestrator()
+            await self.insurance_orchestrator.initialize()
             
             self.initialized = True
-            self.logger.info("Financial RAG MCP Server initialized successfully")
+            self.logger.info("✅ Financial RAG MCP Server initialized successfully")
             
         except Exception as e:
-            self.logger.error(f"Error initializing MCP server: {e}")
+            self.logger.error(f"❌ Failed to initialize MCP server: {e}", exc_info=True)
             raise
-    
+
     def get_available_tools(self) -> List[Dict[str, Any]]:
         """Return list of available MCP tools"""
         return [
             {
                 "name": "answer_financial_question",
-                "description": "Answer complex financial questions using RAG and multi-agent analysis",
+                "description": "Answer financial questions using RAG and multi-agent system",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "question": {
                             "type": "string",
-                            "description": "The financial question to answer"
+                            "description": "Financial question to answer"
                         },
                         "context": {
                             "type": "string",
@@ -133,7 +142,7 @@ class FinancialRAGMCPServer:
                         "verification_level": {
                             "type": "string",
                             "enum": ["basic", "thorough", "comprehensive"],
-                            "description": "Level of source verification to perform",
+                            "description": "Level of verification and analysis",
                             "default": "thorough"
                         },
                         "use_multi_agent": {
@@ -147,7 +156,7 @@ class FinancialRAGMCPServer:
             },
             {
                 "name": "search_financial_documents",
-                "description": "Search through financial documents in the knowledge base",
+                "description": "Search financial documents in the knowledge base",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -155,18 +164,15 @@ class FinancialRAGMCPServer:
                             "type": "string",
                             "description": "Search query"
                         },
-                        "document_types": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Filter by document types (10-K, 10-Q, 8-K, etc.)",
-                            "default": []
-                        },
                         "top_k": {
                             "type": "integer",
                             "description": "Number of results to return",
-                            "default": 10,
-                            "minimum": 1,
-                            "maximum": 50
+                            "default": 10
+                        },
+                        "filters": {
+                            "type": "object",
+                            "description": "Search filters",
+                            "default": {}
                         }
                     },
                     "required": ["query"]
@@ -174,25 +180,21 @@ class FinancialRAGMCPServer:
             },
             {
                 "name": "verify_source_credibility",
-                "description": "Verify the credibility of financial information sources",
+                "description": "Verify the credibility of information sources",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
+                        "content": {
+                            "type": "string",
+                            "description": "Content to verify"
+                        },
                         "sources": {
                             "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "content": {"type": "string"},
-                                    "source": {"type": "string"},
-                                    "document_id": {"type": "string"}
-                                },
-                                "required": ["content", "source"]
-                            },
-                            "description": "Sources to verify"
+                            "items": {"type": "string"},
+                            "description": "List of sources to check against"
                         }
                     },
-                    "required": ["sources"]
+                    "required": ["content"]
                 }
             },
             {
@@ -226,6 +228,108 @@ class FinancialRAGMCPServer:
                     },
                     "required": ["request_type", "content"]
                 }
+            },
+            {
+                "name": "deploy_insurance_agent",
+                "description": "Deploy a domain-specific insurance agent",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "agent_name": {
+                            "type": "string",
+                            "description": "Name for the deployed agent"
+                        },
+                        "agent_type": {
+                            "type": "string",
+                            "enum": ["auto", "life", "health", "dental", "general"],
+                            "description": "Type of insurance agent to deploy"
+                        },
+                        "tools": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Tools to enable for the agent",
+                            "default": ["azure_search", "knowledge_base", "code_interpreter"]
+                        },
+                        "instructions": {
+                            "type": "string",
+                            "description": "Custom instructions for the agent",
+                            "default": ""
+                        }
+                    },
+                    "required": ["agent_name", "agent_type"]
+                }
+            },
+            {
+                "name": "process_insurance_claim",
+                "description": "Process insurance claims using specialized agents",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "enum": ["auto", "life", "health", "dental", "general"],
+                            "description": "Insurance domain"
+                        },
+                        "claim_type": {
+                            "type": "string",
+                            "description": "Type of claim (e.g., collision, medical, death)"
+                        },
+                        "claim_data": {
+                            "type": "object",
+                            "description": "Claim details and documentation"
+                        },
+                        "parallel_execution": {
+                            "type": "boolean",
+                            "description": "Whether to use parallel agent execution",
+                            "default": True
+                        }
+                    },
+                    "required": ["domain", "claim_type", "claim_data"]
+                }
+            },
+            {
+                "name": "analyze_insurance_policy",
+                "description": "Analyze insurance policies using domain-specific agents",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "enum": ["auto", "life", "health", "dental", "general"],
+                            "description": "Insurance domain"
+                        },
+                        "policy_data": {
+                            "type": "object",
+                            "description": "Policy information and coverage details"
+                        },
+                        "analysis_type": {
+                            "type": "string",
+                            "enum": ["basic", "comprehensive", "risk_assessment"],
+                            "description": "Type of analysis to perform",
+                            "default": "comprehensive"
+                        },
+                        "parallel_execution": {
+                            "type": "boolean",
+                            "description": "Whether to use parallel agent execution",
+                            "default": True
+                        }
+                    },
+                    "required": ["domain", "policy_data"]
+                }
+            },
+            {
+                "name": "get_insurance_agent_status",
+                "description": "Get status and health of insurance agents",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "agent_name": {
+                            "type": "string",
+                            "description": "Name of the agent to check",
+                            "default": ""
+                        }
+                    }
+                }
             }
         ]
     
@@ -254,6 +358,30 @@ class FinancialRAGMCPServer:
                 "uri": "financial://system/status",
                 "name": "System Status", 
                 "description": "Current status of the financial RAG system",
+                "mimeType": "application/json"
+            },
+            {
+                "uri": "insurance://agents/status",
+                "name": "Insurance Agent Status",
+                "description": "Current status and health of all insurance agents",
+                "mimeType": "application/json"
+            },
+            {
+                "uri": "insurance://policies/types",
+                "name": "Insurance Policy Types",
+                "description": "Available insurance policy types and their schemas",
+                "mimeType": "application/json"
+            },
+            {
+                "uri": "insurance://claims/types",
+                "name": "Insurance Claim Types",
+                "description": "Available insurance claim types and their processing workflows",
+                "mimeType": "application/json"
+            },
+            {
+                "uri": "insurance://orchestrator/status",
+                "name": "Insurance Orchestrator Status",
+                "description": "Current status of the insurance agent orchestrator",
                 "mimeType": "application/json"
             }
         ]
@@ -292,6 +420,48 @@ class FinancialRAGMCPServer:
                         "required": False
                     }
                 ]
+            },
+            {
+                "name": "insurance_policy_analysis",
+                "description": "Template for insurance policy analysis",
+                "arguments": [
+                    {
+                        "name": "domain",
+                        "description": "Insurance domain (auto, life, health, dental, general)",
+                        "required": True
+                    },
+                    {
+                        "name": "policy_data",
+                        "description": "Policy information and coverage details",
+                        "required": True
+                    },
+                    {
+                        "name": "analysis_type",
+                        "description": "Type of analysis (basic, comprehensive, risk_assessment)",
+                        "required": False
+                    }
+                ]
+            },
+            {
+                "name": "insurance_claim_processing",
+                "description": "Template for insurance claim processing",
+                "arguments": [
+                    {
+                        "name": "domain",
+                        "description": "Insurance domain (auto, life, health, dental, general)",
+                        "required": True
+                    },
+                    {
+                        "name": "claim_type",
+                        "description": "Type of claim (collision, medical, death, etc.)",
+                        "required": True
+                    },
+                    {
+                        "name": "claim_data",
+                        "description": "Claim details and documentation",
+                        "required": True
+                    }
+                ]
             }
         ]
     
@@ -322,6 +492,18 @@ class FinancialRAGMCPServer:
             elif name == "coordinate_multi_agent_analysis":
                 self.logger.info("🤝 Calling _handle_multi_agent_coordination")
                 return await self._handle_multi_agent_coordination(arguments, session_id)
+            elif name == "deploy_insurance_agent":
+                self.logger.info("🛠️ Calling _handle_deploy_insurance_agent")
+                return await self._handle_deploy_insurance_agent(arguments, session_id)
+            elif name == "process_insurance_claim":
+                self.logger.info("📦 Calling _handle_process_insurance_claim")
+                return await self._handle_process_insurance_claim(arguments, session_id)
+            elif name == "analyze_insurance_policy":
+                self.logger.info("📊 Calling _handle_analyze_insurance_policy")
+                return await self._handle_analyze_insurance_policy(arguments, session_id)
+            elif name == "get_insurance_agent_status":
+                self.logger.info("🔍 Calling _handle_get_insurance_agent_status")
+                return await self._handle_get_insurance_agent_status(arguments, session_id)
             else:
                 self.logger.error(f"❌ Unknown tool: {name}")
                 return {"error": f"Unknown tool: {name}", "success": False}
@@ -520,6 +702,113 @@ class FinancialRAGMCPServer:
         result = await self.orchestrator.coordinate_agents(complex_request, session_id)
         return result
     
+    async def _handle_deploy_insurance_agent(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Handle deploying a new insurance agent"""
+        agent_name = arguments.get("agent_name")
+        agent_type = arguments.get("agent_type")
+        tools = arguments.get("tools", ["azure_search", "knowledge_base", "code_interpreter"])
+        instructions = arguments.get("instructions", "")
+
+        if not agent_name or not agent_type:
+            return {"error": "Missing agent_name or agent_type", "success": False}
+
+        try:
+            self.logger.info(f"🛠️ Deploying insurance agent: {agent_name} ({agent_type}) with tools: {tools}")
+            new_agent = create_insurance_agent(agent_name, agent_type, tools, instructions)
+            await self.insurance_orchestrator.add_agent(new_agent)
+            self.logger.info(f"✅ Insurance agent {agent_name} deployed successfully.")
+            return {"message": f"Insurance agent {agent_name} deployed successfully.", "success": True}
+        except Exception as e:
+            self.logger.error(f"❌ Error deploying insurance agent {agent_name}: {e}", exc_info=True)
+            return {"error": f"Error deploying insurance agent {agent_name}: {e}", "success": False}
+
+    async def _handle_process_insurance_claim(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Handle processing an insurance claim"""
+        domain = arguments.get("domain")
+        claim_type = arguments.get("claim_type")
+        claim_data = arguments.get("claim_data")
+        parallel_execution = arguments.get("parallel_execution", True)
+
+        if not domain or not claim_type or not claim_data:
+            return {"error": "Missing domain, claim_type, or claim_data", "success": False}
+
+        try:
+            self.logger.info(f"📦 Processing insurance claim: {domain} - {claim_type}")
+            claim_processor = self.insurance_orchestrator.get_agent_by_name(f"{domain}_{claim_type}_agent")
+            
+            if not claim_processor:
+                return {"error": f"No agent found for {domain} {claim_type} claims.", "success": False}
+
+            if parallel_execution:
+                self.logger.info("🚀 Executing claim processing in parallel...")
+                result = await claim_processor.invoke(claim_data)
+            else:
+                self.logger.info("🚀 Executing claim processing sequentially...")
+                result = await claim_processor.invoke(claim_data)
+
+            self.logger.info(f"📥 Claim processing result: {result}")
+            return {"message": f"Insurance claim for {domain} {claim_type} processed successfully.", "result": result, "success": True}
+        except Exception as e:
+            self.logger.error(f"❌ Error processing insurance claim: {e}", exc_info=True)
+            return {"error": f"Error processing insurance claim: {e}", "success": False}
+
+    async def _handle_analyze_insurance_policy(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Handle analyzing an insurance policy"""
+        domain = arguments.get("domain")
+        policy_data = arguments.get("policy_data")
+        analysis_type = arguments.get("analysis_type", "comprehensive")
+        parallel_execution = arguments.get("parallel_execution", True)
+
+        if not domain or not policy_data:
+            return {"error": "Missing domain or policy_data", "success": False}
+
+        try:
+            self.logger.info(f"📊 Analyzing insurance policy: {domain} - {analysis_type}")
+            policy_analyzer = self.insurance_orchestrator.get_agent_by_name(f"{domain}_policy_analyzer_agent")
+            
+            if not policy_analyzer:
+                return {"error": f"No agent found for {domain} policy analysis.", "success": False}
+
+            if parallel_execution:
+                self.logger.info("🚀 Executing policy analysis in parallel...")
+                result = await policy_analyzer.invoke(policy_data)
+            else:
+                self.logger.info("🚀 Executing policy analysis sequentially...")
+                result = await policy_analyzer.invoke(policy_data)
+
+            self.logger.info(f"📥 Policy analysis result: {result}")
+            return {"message": f"Insurance policy for {domain} analyzed successfully.", "result": result, "success": True}
+        except Exception as e:
+            self.logger.error(f"❌ Error analyzing insurance policy: {e}", exc_info=True)
+            return {"error": f"Error analyzing insurance policy: {e}", "success": False}
+
+    async def _handle_get_insurance_agent_status(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Handle getting status of an insurance agent"""
+        agent_name = arguments.get("agent_name")
+        if not agent_name:
+            return {"error": "Missing agent_name", "success": False}
+
+        try:
+            self.logger.info(f"🔍 Checking status of insurance agent: {agent_name}")
+            agent = self.insurance_orchestrator.get_agent_by_name(agent_name)
+            
+            if agent:
+                status = {
+                    "name": agent.name,
+                    "type": agent.type,
+                    "tools": agent.tools,
+                    "last_activity": agent.last_activity,
+                    "health": agent.health,
+                    "status": agent.status
+                }
+                self.logger.info(f"✅ Status for {agent_name}: {status}")
+                return {"message": f"Status for {agent_name}: {status}", "success": True}
+            else:
+                return {"error": f"Agent {agent_name} not found.", "success": False}
+        except Exception as e:
+            self.logger.error(f"❌ Error getting insurance agent status: {e}", exc_info=True)
+            return {"error": f"Error getting insurance agent status: {e}", "success": False}
+    
     async def handle_resource_read(self, uri: str) -> Dict[str, Any]:
         """Handle MCP resource read requests"""
         try:
@@ -570,6 +859,114 @@ class FinancialRAGMCPServer:
                         }
                     ]
                 }
+            elif uri == "insurance://agents/status":
+                if self.insurance_orchestrator:
+                    agent_status = await self.insurance_orchestrator.get_all_agent_status()
+                    return {
+                        "contents": [
+                            {
+                                "uri": uri,
+                                "mimeType": "application/json",
+                                "text": json.dumps(agent_status, indent=2)
+                            }
+                        ]
+                    }
+                else:
+                    return {"error": {"code": -32603, "message": "Insurance orchestrator not available"}}
+            elif uri == "insurance://policies/types":
+                policy_types = {
+                    "auto": {
+                        "description": "Automobile insurance policies",
+                        "coverage_types": ["liability", "collision", "comprehensive", "uninsured_motorist"],
+                        "required_fields": ["vehicle_info", "driver_info", "coverage_limits"]
+                    },
+                    "life": {
+                        "description": "Life insurance policies",
+                        "coverage_types": ["term", "whole", "universal", "variable"],
+                        "required_fields": ["insured_info", "beneficiary_info", "coverage_amount"]
+                    },
+                    "health": {
+                        "description": "Health insurance policies",
+                        "coverage_types": ["medical", "dental", "vision", "prescription"],
+                        "required_fields": ["member_info", "provider_network", "benefits"]
+                    },
+                    "dental": {
+                        "description": "Dental insurance policies",
+                        "coverage_types": ["preventive", "basic", "major", "orthodontia"],
+                        "required_fields": ["member_info", "provider_network", "benefits"]
+                    },
+                    "general": {
+                        "description": "General insurance policies",
+                        "coverage_types": ["property", "casualty", "professional", "cyber"],
+                        "required_fields": ["insured_info", "coverage_details", "limits"]
+                    }
+                }
+                return {
+                    "contents": [
+                        {
+                            "uri": uri,
+                            "mimeType": "application/json",
+                            "text": json.dumps(policy_types, indent=2)
+                        }
+                    ]
+                }
+            elif uri == "insurance://claims/types":
+                claim_types = {
+                    "auto": {
+                        "collision": "Vehicle collision claims",
+                        "comprehensive": "Non-collision damage claims",
+                        "liability": "Third-party liability claims",
+                        "medical": "Medical expense claims"
+                    },
+                    "life": {
+                        "death": "Death benefit claims",
+                        "disability": "Disability benefit claims",
+                        "surrender": "Policy surrender claims"
+                    },
+                    "health": {
+                        "medical": "Medical treatment claims",
+                        "prescription": "Prescription drug claims",
+                        "preventive": "Preventive care claims"
+                    },
+                    "dental": {
+                        "preventive": "Preventive dental care claims",
+                        "basic": "Basic dental procedure claims",
+                        "major": "Major dental procedure claims"
+                    },
+                    "general": {
+                        "property": "Property damage claims",
+                        "casualty": "Casualty claims",
+                        "professional": "Professional liability claims"
+                    }
+                }
+                return {
+                    "contents": [
+                        {
+                            "uri": uri,
+                            "mimeType": "application/json",
+                            "text": json.dumps(claim_types, indent=2)
+                        }
+                    ]
+                }
+            elif uri == "insurance://orchestrator/status":
+                if self.insurance_orchestrator:
+                    orchestrator_status = {
+                        "initialized": self.insurance_orchestrator._initialized,
+                        "agents_count": len(self.insurance_orchestrator.agents),
+                        "tools_count": len(self.insurance_orchestrator.tools),
+                        "last_activity": datetime.utcnow().isoformat()
+                    }
+                    return {
+                        "contents": [
+                            {
+                                "uri": uri,
+                                "mimeType": "application/json",
+                                "text": json.dumps(orchestrator_status, indent=2)
+                            }
+                        ]
+                    }
+                else:
+                    return {"error": {"code": -32603, "message": "Insurance orchestrator not available"}}
             else:
                 return {"error": {"code": -32602, "message": f"Unknown resource: {uri}"}}
                 
@@ -633,6 +1030,69 @@ Provide specific examples and quantitative measures where available."""
                 
                 return {
                     "description": f"Risk assessment prompt for {companies_str}",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": {
+                                "type": "text",
+                                "text": prompt
+                            }
+                        }
+                    ]
+                }
+            elif name == "insurance_policy_analysis":
+                domain = arguments.get("domain", "")
+                policy_data = arguments.get("policy_data", {})
+                analysis_type = arguments.get("analysis_type", "comprehensive")
+                
+                prompt = f"""Please provide a {analysis_type} insurance policy analysis for {domain} insurance.
+
+Policy Data: {json.dumps(policy_data, indent=2)}
+
+Include the following in your analysis:
+1. Policy coverage assessment
+2. Risk evaluation and recommendations
+3. Cost-benefit analysis
+4. Compliance and regulatory considerations
+5. Claims processing implications
+6. Policy optimization suggestions
+
+Use domain-specific knowledge for {domain} insurance and provide actionable recommendations."""
+                
+                return {
+                    "description": f"Insurance policy analysis prompt for {domain}",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": {
+                                "type": "text",
+                                "text": prompt
+                            }
+                        }
+                    ]
+                }
+            elif name == "insurance_claim_processing":
+                domain = arguments.get("domain", "")
+                claim_type = arguments.get("claim_type", "")
+                claim_data = arguments.get("claim_data", {})
+                
+                prompt = f"""Please process an insurance claim for {domain} insurance.
+
+Claim Type: {claim_type}
+Claim Data: {json.dumps(claim_data, indent=2)}
+
+Include the following in your processing:
+1. Claim validation and documentation review
+2. Coverage verification and eligibility
+3. Damage assessment and cost estimation
+4. Liability determination and fault analysis
+5. Settlement calculation and recommendations
+6. Processing timeline and next steps
+
+Use domain-specific knowledge for {domain} {claim_type} claims and provide detailed processing results."""
+                
+                return {
+                    "description": f"Insurance claim processing prompt for {domain} {claim_type}",
                     "messages": [
                         {
                             "role": "user",

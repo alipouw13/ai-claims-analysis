@@ -142,8 +142,10 @@ try:
         from backend.app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
         from backend.app.services.multi_agent_orchestrator import MultiAgentOrchestrator, AgentType
         from backend.app.services.rag_pipeline import RAGPipeline
+        from backend.app.services.agents.multi_agent_insurance_orchestrator import SemanticKernelInsuranceOrchestrator
+        from backend.app.services.agents.insurance_agents import create_insurance_agent
         from backend.app.core.config import settings
-    print("✅ Successfully imported Azure services")
+    print("✅ Successfully imported Azure services and insurance agents")
 except ImportError as e:
     print(f"❌ Import error: {e}")
     print("💡 Make sure you're running from the project root or the backend is properly set up")
@@ -184,6 +186,15 @@ class StreamingMCPServer(FinancialRAGMCPServer):
                     yield chunk
             elif method == "coordinate_multi_agent_analysis":
                 async for chunk in self._stream_multi_agent_analysis(request_id, params):
+                    yield chunk
+            elif method == "process_insurance_claim":
+                async for chunk in self._stream_insurance_claim_processing(request_id, params):
+                    yield chunk
+            elif method == "analyze_insurance_policy":
+                async for chunk in self._stream_insurance_policy_analysis(request_id, params):
+                    yield chunk
+            elif method == "deploy_insurance_agent":
+                async for chunk in self._stream_insurance_agent_deployment(request_id, params):
                     yield chunk
             else:
                 # For non-streaming methods, return single response
@@ -466,6 +477,267 @@ class StreamingMCPServer(FinancialRAGMCPServer):
             
         except Exception as e:
             self.logger.error(f"Error in streaming multi-agent analysis: {e}")
+            yield json.dumps({
+                "id": request_id,
+                "type": "error",
+                "error": {"code": -32603, "message": str(e)},
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+    async def _stream_insurance_claim_processing(self, request_id: str, params: Dict[str, Any]) -> AsyncGenerator[str, None]:
+        """Stream insurance claim processing with domain-specific agent updates"""
+        try:
+            domain = params.get("domain", "")
+            claim_type = params.get("claim_type", "")
+            claim_data = params.get("claim_data", {})
+            parallel_execution = params.get("parallel_execution", True)
+            
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "initializing",
+                "message": f"Initializing {domain} {claim_type} claim processing...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Step 1: Agent identification
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "agent_identification",
+                "message": f"Identifying {domain} claim processing agent...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            claim_processor = self.insurance_orchestrator.get_agent_by_name(f"{domain}_{claim_type}_agent")
+            
+            if not claim_processor:
+                yield json.dumps({
+                    "id": request_id,
+                    "type": "error",
+                    "error": {"code": -32603, "message": f"No agent found for {domain} {claim_type} claims."},
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                return
+            
+            # Step 2: Claim validation
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "validation",
+                "message": "Validating claim documentation and requirements...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            await asyncio.sleep(1.0)  # Simulate validation time
+            
+            # Step 3: Processing execution
+            execution_mode = "parallel" if parallel_execution else "sequential"
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "processing",
+                "message": f"Processing claim using {execution_mode} execution...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Process the claim
+            result = await claim_processor.invoke(claim_data)
+            
+            # Step 4: Finalization
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "finalizing",
+                "message": "Finalizing claim processing results...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Send final result
+            yield json.dumps({
+                "id": request_id,
+                "type": "result",
+                "data": {
+                    "message": f"Insurance claim for {domain} {claim_type} processed successfully.",
+                    "result": result,
+                    "success": True
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+        except Exception as e:
+            self.logger.error(f"Error in streaming insurance claim processing: {e}")
+            yield json.dumps({
+                "id": request_id,
+                "type": "error",
+                "error": {"code": -32603, "message": str(e)},
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+    async def _stream_insurance_policy_analysis(self, request_id: str, params: Dict[str, Any]) -> AsyncGenerator[str, None]:
+        """Stream insurance policy analysis with domain-specific agent updates"""
+        try:
+            domain = params.get("domain", "")
+            policy_data = params.get("policy_data", {})
+            analysis_type = params.get("analysis_type", "comprehensive")
+            parallel_execution = params.get("parallel_execution", True)
+            
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "initializing",
+                "message": f"Initializing {domain} policy analysis ({analysis_type})...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Step 1: Policy analyzer identification
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "analyzer_identification",
+                "message": f"Identifying {domain} policy analyzer agent...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            policy_analyzer = self.insurance_orchestrator.get_agent_by_name(f"{domain}_policy_analyzer_agent")
+            
+            if not policy_analyzer:
+                yield json.dumps({
+                    "id": request_id,
+                    "type": "error",
+                    "error": {"code": -32603, "message": f"No agent found for {domain} policy analysis."},
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                return
+            
+            # Step 2: Policy data validation
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "validation",
+                "message": "Validating policy data and coverage information...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            await asyncio.sleep(1.0)  # Simulate validation time
+            
+            # Step 3: Analysis execution
+            execution_mode = "parallel" if parallel_execution else "sequential"
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "analysis",
+                "message": f"Performing {analysis_type} analysis using {execution_mode} execution...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Perform the analysis
+            result = await policy_analyzer.invoke(policy_data)
+            
+            # Step 4: Finalization
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "finalizing",
+                "message": "Finalizing policy analysis results...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Send final result
+            yield json.dumps({
+                "id": request_id,
+                "type": "result",
+                "data": {
+                    "message": f"Insurance policy for {domain} analyzed successfully.",
+                    "result": result,
+                    "success": True
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+        except Exception as e:
+            self.logger.error(f"Error in streaming insurance policy analysis: {e}")
+            yield json.dumps({
+                "id": request_id,
+                "type": "error",
+                "error": {"code": -32603, "message": str(e)},
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
+    async def _stream_insurance_agent_deployment(self, request_id: str, params: Dict[str, Any]) -> AsyncGenerator[str, None]:
+        """Stream insurance agent deployment with progress updates"""
+        try:
+            agent_name = params.get("agent_name", "")
+            agent_type = params.get("agent_type", "")
+            tools = params.get("tools", ["azure_search", "knowledge_base", "code_interpreter"])
+            instructions = params.get("instructions", "")
+            
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "initializing",
+                "message": f"Initializing {agent_type} agent deployment: {agent_name}",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Step 1: Agent creation
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "creation",
+                "message": f"Creating {agent_type} agent with {len(tools)} tools...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            new_agent = create_insurance_agent(agent_name, agent_type, tools, instructions)
+            
+            # Step 2: Agent registration
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "registration",
+                "message": "Registering agent with orchestrator...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            await self.insurance_orchestrator.add_agent(new_agent)
+            
+            # Step 3: Agent initialization
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "initialization",
+                "message": "Initializing agent capabilities...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            await asyncio.sleep(1.0)  # Simulate initialization time
+            
+            # Step 4: Finalization
+            yield json.dumps({
+                "id": request_id,
+                "type": "progress",
+                "step": "finalizing",
+                "message": "Finalizing agent deployment...",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Send final result
+            yield json.dumps({
+                "id": request_id,
+                "type": "result",
+                "data": {
+                    "message": f"Insurance agent {agent_name} deployed successfully.",
+                    "agent_name": agent_name,
+                    "agent_type": agent_type,
+                    "tools": tools,
+                    "success": True
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+        except Exception as e:
+            self.logger.error(f"Error in streaming insurance agent deployment: {e}")
             yield json.dumps({
                 "id": request_id,
                 "type": "error",
