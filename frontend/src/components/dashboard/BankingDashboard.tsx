@@ -3,7 +3,7 @@ import React from 'react';
 const StatCard: React.FC<{ title: string; value: string | number; subtitle?: string }> = ({ title, value, subtitle }) => (
   <div className="border rounded-md p-4 bg-card">
     <div className="text-xs text-muted-foreground">{title}</div>
-    <div className="text-2xl font-semibold mt-1">{value}</div>
+    <div className="text-2xl font-semibold mt-1 text-black">{value}</div>
     {subtitle && <div className="text-xs text-muted-foreground mt-1">{subtitle}</div>}
   </div>
 );
@@ -20,12 +20,12 @@ const BankingDashboard: React.FC = () => {
 
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
         <div className="border rounded-md p-4 bg-card">
-          <div className="text-sm font-medium mb-3">Recent SEC Analysis</div>
+          <div className="text-sm font-medium mb-3 text-black">Recent SEC Analysis</div>
           <ul className="space-y-2 text-sm">
             {['PNC Financial Services','JPMorgan Chase & Co','Meta Platforms, Inc.','NVIDIA Corp','Microsoft Corp'].map((name, i) => (
               <li key={i} className="flex items-center justify-between border rounded p-2">
                 <div>
-                  <div className="font-medium">{name}</div>
+                  <div className="font-medium text-blue-600">{name}</div>
                   <div className="text-xs text-muted-foreground">Form: 10-K • status: completed</div>
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded bg-muted">completed</span>
@@ -34,11 +34,11 @@ const BankingDashboard: React.FC = () => {
           </ul>
         </div>
         <div className="border rounded-md p-4 bg-card">
-          <div className="text-sm font-medium mb-3">Form Types Distribution</div>
+          <div className="text-sm font-medium mb-3 text-black">Form Types Distribution</div>
           <div className="space-y-3">
             <div>
               <div className="flex justify-between text-xs mb-1"><span>10-K</span><span>100%</span></div>
-              <div className="h-2 bg-muted rounded"><div className="h-2 bg-blue-500 rounded" style={{width:'100%'}}/></div>
+              <div className="h-2 bg-muted rounded"><div className="h-2 bg-blue-600 rounded" style={{width:'100%'}}/></div>
             </div>
           </div>
         </div>

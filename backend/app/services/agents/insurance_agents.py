@@ -7,6 +7,7 @@ This module provides domain-specific insurance agents for different types of ins
 - Health Insurance Agent
 - Dental Insurance Agent
 - General Insurance Agent
+- Risk Calculation Agent
 
 Each agent is specialized for their respective domain and has access to relevant tools.
 """
@@ -14,6 +15,7 @@ Each agent is specialized for their respective domain and has access to relevant
 import logging
 from typing import Dict, List, Any, Optional
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -449,12 +451,259 @@ class GeneralInsuranceAgent(InsuranceAgentBase):
             logger.error(f"General claim processing failed: {e}")
             return {"error": str(e), "domain": "general"}
 
+class RiskCalculationAgent(InsuranceAgentBase):
+    """Risk calculation agent for analyzing claim approval risk"""
+    
+    def __init__(self, tools: List[Any]):
+        super().__init__("risk_calculation", tools)
+    
+    async def analyze_policy(self, policy_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze policy for risk calculation purposes"""
+        try:
+            # Extract coverage information from policy
+            coverage = policy_data.get("coverage", {})
+            
+            analysis = {
+                "domain": "risk_calculation",
+                "analysis_type": "policy_coverage_analysis",
+                "coverage_amounts": coverage,
+                "total_coverage": sum(coverage.values()) if isinstance(coverage, dict) else 0,
+                "risk_factors": [],
+                "analysis_notes": [
+                    "Policy coverage analyzed for risk assessment",
+                    "Coverage amounts extracted for claim comparison"
+                ]
+            }
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Risk policy analysis failed: {e}")
+            return {"error": str(e), "domain": "risk_calculation"}
+    
+    async def process_claim(self, claim_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process claim for risk calculation (alias for calculate_claim_risk)"""
+        return await self.calculate_claim_risk(claim_data)
+    
+    async def calculate_claim_risk(self, claim_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate risk of approving a claim"""
+        try:
+            # Extract claim amount from claim data
+            claim_amount = self._extract_claim_amount(claim_data)
+            
+            # Find matching policy using vector search
+            matching_policy = await self._find_matching_policy(claim_data)
+            
+            if not matching_policy:
+                return {
+                    "domain": "risk_calculation",
+                    "risk_assessment": "manual_review_required",
+                    "reason": "No matching policy found",
+                    "claim_amount": claim_amount,
+                    "policy_coverage": None,
+                    "risk_score": 100,
+                    "recommendation": "Manual review required - policy not found"
+                }
+            
+            # Extract policy coverage amount
+            policy_coverage = self._extract_policy_coverage(matching_policy)
+            
+            # Calculate risk
+            risk_assessment = self._calculate_risk_score(claim_amount, policy_coverage)
+            
+            return {
+                "domain": "risk_calculation",
+                "risk_assessment": risk_assessment["decision"],
+                "claim_amount": claim_amount,
+                "policy_coverage": policy_coverage,
+                "policy_id": matching_policy.get("id"),
+                "risk_score": risk_assessment["risk_score"],
+                "risk_factors": risk_assessment["risk_factors"],
+                "recommendation": risk_assessment["recommendation"],
+                "analysis_timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Risk calculation failed: {e}")
+            return {"error": str(e), "domain": "risk_calculation"}
+    
+    def _extract_claim_amount(self, claim_data: Dict[str, Any]) -> float:
+        """Extract claim amount from claim data"""
+        try:
+            # Try different possible fields for claim amount
+            amount_fields = [
+                "claim_amount", "damage_estimate", "settlement_amount", 
+                "estimated_loss", "loss_amount", "requested_amount"
+            ]
+            
+            for field in amount_fields:
+                if field in claim_data and claim_data[field]:
+                    amount = claim_data[field]
+                    if isinstance(amount, (int, float)):
+                        return float(amount)
+                    elif isinstance(amount, str):
+                        # Try to extract numeric value from string
+                        import re
+                        numbers = re.findall(r'\d+\.?\d*', amount)
+                        if numbers:
+                            return float(numbers[0])
+            
+            # Default to 0 if no amount found
+            return 0.0
+            
+        except Exception as e:
+            logger.error(f"Failed to extract claim amount: {e}")
+            return 0.0
+    
+    async def _find_matching_policy(self, claim_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Find matching policy using vector search"""
+        try:
+            # Use knowledge base tool to search for matching policies
+            kb_tool = None
+            for tool in self.tools:
+                if hasattr(tool, 'search_policies'):
+                    kb_tool = tool
+                    break
+            
+            if not kb_tool:
+                # Fallback: use Azure Search tool
+                for tool in self.tools:
+                    if hasattr(tool, 'hybrid_search'):
+                        kb_tool = tool
+                        break
+            
+            if kb_tool:
+                # Search for policies based on claim information
+                search_query = self._build_policy_search_query(claim_data)
+                
+                if hasattr(kb_tool, 'search_policies'):
+                    results = await kb_tool.search_policies(search_query)
+                else:
+                    results = await kb_tool.hybrid_search(
+                        query=search_query,
+                        indexes=["policy-documents"],
+                        max_results=5
+                    )
+                
+                # Return the best match
+                if results and "results" in results and results["results"]:
+                    return results["results"][0]
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to find matching policy: {e}")
+            return None
+    
+    def _build_policy_search_query(self, claim_data: Dict[str, Any]) -> str:
+        """Build search query for finding matching policy"""
+        query_parts = []
+        
+        # Add policyholder information if available
+        if "policyholder" in claim_data:
+            query_parts.append(f"policyholder: {claim_data['policyholder']}")
+        
+        if "policy_number" in claim_data:
+            query_parts.append(f"policy number: {claim_data['policy_number']}")
+        
+        # Add coverage type if available
+        if "coverage_type" in claim_data:
+            query_parts.append(f"coverage type: {claim_data['coverage_type']}")
+        
+        # Add domain-specific terms
+        if "vehicle_info" in claim_data:
+            query_parts.append("auto insurance policy")
+        elif "health_info" in claim_data:
+            query_parts.append("health insurance policy")
+        elif "dental_info" in claim_data:
+            query_parts.append("dental insurance policy")
+        
+        return " ".join(query_parts) if query_parts else "insurance policy"
+    
+    def _extract_policy_coverage(self, policy_data: Dict[str, Any]) -> float:
+        """Extract policy coverage amount"""
+        try:
+            coverage = policy_data.get("coverage", {})
+            
+            if isinstance(coverage, dict):
+                # Sum all coverage amounts
+                total_coverage = sum(
+                    float(amount) for amount in coverage.values() 
+                    if isinstance(amount, (int, float)) or 
+                    (isinstance(amount, str) and amount.replace('.', '').isdigit())
+                )
+                return total_coverage
+            elif isinstance(coverage, (int, float)):
+                return float(coverage)
+            else:
+                return 0.0
+                
+        except Exception as e:
+            logger.error(f"Failed to extract policy coverage: {e}")
+            return 0.0
+    
+    def _calculate_risk_score(self, claim_amount: float, policy_coverage: float) -> Dict[str, Any]:
+        """Calculate risk score and decision"""
+        try:
+            if policy_coverage <= 0:
+                return {
+                    "decision": "manual_review_required",
+                    "risk_score": 100,
+                    "risk_factors": ["Policy coverage amount not found"],
+                    "recommendation": "Manual review required - policy coverage not available"
+                }
+            
+            # Calculate coverage ratio
+            coverage_ratio = claim_amount / policy_coverage if policy_coverage > 0 else float('inf')
+            
+            # Determine risk level and decision
+            if claim_amount <= policy_coverage:
+                if coverage_ratio <= 0.5:
+                    # Claim is 50% or less of coverage - low risk
+                    return {
+                        "decision": "auto_approve",
+                        "risk_score": 10,
+                        "risk_factors": ["Claim within coverage limits"],
+                        "recommendation": "Auto-approve: Claim amount within policy coverage"
+                    }
+                else:
+                    # Claim is 50-100% of coverage - medium risk
+                    return {
+                        "decision": "auto_approve",
+                        "risk_score": 30,
+                        "risk_factors": ["Claim approaching coverage limit"],
+                        "recommendation": "Auto-approve with monitoring: Claim within coverage but approaching limit"
+                    }
+            else:
+                # Claim exceeds coverage - high risk
+                excess_amount = claim_amount - policy_coverage
+                risk_score = min(100, 50 + (excess_amount / policy_coverage) * 50)
+                
+                return {
+                    "decision": "manual_review_required",
+                    "risk_score": int(risk_score),
+                    "risk_factors": [
+                        f"Claim amount (${claim_amount:,.2f}) exceeds policy coverage (${policy_coverage:,.2f})",
+                        f"Excess amount: ${excess_amount:,.2f}"
+                    ],
+                    "recommendation": f"Manual review required: Claim exceeds policy coverage by ${excess_amount:,.2f}"
+                }
+                
+        except Exception as e:
+            logger.error(f"Risk score calculation failed: {e}")
+            return {
+                "decision": "manual_review_required",
+                "risk_score": 100,
+                "risk_factors": ["Risk calculation error"],
+                "recommendation": "Manual review required - risk calculation error"
+            }
+
 def create_insurance_agent(domain: str, tools: List[Any]) -> InsuranceAgentBase:
     """
     Factory function to create domain-specific insurance agents
     
     Args:
-        domain: Insurance domain ("auto", "life", "health", "dental", "general")
+        domain: Insurance domain ("auto", "life", "health", "dental", "general", "risk_calculation")
         tools: List of tools to provide to the agent
         
     Returns:
@@ -472,6 +721,8 @@ def create_insurance_agent(domain: str, tools: List[Any]) -> InsuranceAgentBase:
         return DentalInsuranceAgent(tools)
     elif domain == "general":
         return GeneralInsuranceAgent(tools)
+    elif domain == "risk_calculation":
+        return RiskCalculationAgent(tools)
     else:
         logger.warning(f"Unknown domain '{domain}', using general agent")
         return GeneralInsuranceAgent(tools)

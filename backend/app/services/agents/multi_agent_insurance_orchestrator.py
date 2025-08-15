@@ -136,6 +136,10 @@ class SemanticKernelInsuranceOrchestrator:
                 "general": {
                     "tools": ["azure_search", "knowledge_base", "code_interpreter", "file_search", "bing_search"],
                     "indexes": ["claims-documents", "policy-documents"]
+                },
+                "risk_calculation": {
+                    "tools": ["azure_search", "knowledge_base", "code_interpreter", "file_search"],
+                    "indexes": ["claims-documents", "policy-documents"]
                 }
             }
             
@@ -188,6 +192,10 @@ class SemanticKernelInsuranceOrchestrator:
             # Create policy management plugin
             policy_plugin = await self._create_policy_management_plugin()
             self.kernel.import_plugin_from_object(policy_plugin, "policy_management")
+            
+            # Create risk calculation plugin
+            risk_plugin = await self._create_risk_calculation_plugin()
+            self.kernel.import_plugin_from_object(risk_plugin, "risk_calculation")
             
         except Exception as e:
             logger.error(f"Failed to add insurance plugins: {e}")
@@ -403,6 +411,95 @@ print(f"Total coverage: ${total_coverage:,.2f}")
         
         return PolicyManagementPlugin(self)
     
+    async def _create_risk_calculation_plugin(self):
+        """Create risk calculation plugin"""
+        class RiskCalculationPlugin:
+            def __init__(self, orchestrator):
+                self.orchestrator = orchestrator
+            
+            async def calculate_claim_risk(self, claim_data: Dict[str, Any]) -> Dict[str, Any]:
+                """Calculate risk of approving a claim"""
+                try:
+                    # Use risk calculation agent
+                    if "risk_calculation" in self.orchestrator.agents:
+                        agent = self.orchestrator.agents["risk_calculation"]["agent"]
+                        return await agent.calculate_claim_risk(claim_data)
+                    else:
+                        return {"error": "Risk calculation agent not available"}
+                        
+                except Exception as e:
+                    logger.error(f"Risk calculation failed: {e}")
+                    return {"error": str(e)}
+            
+            async def analyze_claim_approval_risk(self, claim_id: str, policy_id: str = None) -> Dict[str, Any]:
+                """Analyze claim approval risk with optional policy ID"""
+                try:
+                    # Get claim data from knowledge base
+                    kb_tool = self.orchestrator.tools["knowledge_base"]
+                    
+                    # Search for claim document
+                    claim_results = await kb_tool.search_claims(
+                        query=f"claim ID: {claim_id}",
+                        max_results=1
+                    )
+                    
+                    if not claim_results.get("results"):
+                        return {"error": f"Claim {claim_id} not found"}
+                    
+                    claim_data = claim_results["results"][0]
+                    
+                    # If policy ID provided, search for specific policy
+                    if policy_id:
+                        policy_results = await kb_tool.search_policies(
+                            query=f"policy ID: {policy_id}",
+                            max_results=1
+                        )
+                        if policy_results.get("results"):
+                            claim_data["matching_policy"] = policy_results["results"][0]
+                    
+                    # Calculate risk
+                    return await self.calculate_claim_risk(claim_data)
+                    
+                except Exception as e:
+                    logger.error(f"Claim approval risk analysis failed: {e}")
+                    return {"error": str(e)}
+            
+            async def batch_risk_assessment(self, claim_ids: List[str]) -> Dict[str, Any]:
+                """Perform batch risk assessment for multiple claims"""
+                try:
+                    results = {}
+                    
+                    for claim_id in claim_ids:
+                        risk_result = await self.analyze_claim_approval_risk(claim_id)
+                        results[claim_id] = risk_result
+                    
+                    # Calculate summary statistics
+                    auto_approve_count = sum(
+                        1 for result in results.values() 
+                        if result.get("risk_assessment") == "auto_approve"
+                    )
+                    manual_review_count = sum(
+                        1 for result in results.values() 
+                        if result.get("risk_assessment") == "manual_review_required"
+                    )
+                    
+                    return {
+                        "batch_results": results,
+                        "summary": {
+                            "total_claims": len(claim_ids),
+                            "auto_approve": auto_approve_count,
+                            "manual_review": manual_review_count,
+                            "auto_approve_percentage": (auto_approve_count / len(claim_ids)) * 100 if claim_ids else 0
+                        },
+                        "assessment_timestamp": datetime.utcnow().isoformat()
+                    }
+                    
+                except Exception as e:
+                    logger.error(f"Batch risk assessment failed: {e}")
+                    return {"error": str(e)}
+        
+        return RiskCalculationPlugin(self)
+    
     async def orchestrate_workflow(
         self, 
         workflow_type: str,
@@ -466,6 +563,8 @@ print(f"Total coverage: ${total_coverage:,.2f}")
                 goal = f"Analyze insurance policy for domain: {input_data.get('domain', 'general')}"
             elif workflow_type == "claims_processing":
                 goal = f"Process insurance claim for domain: {input_data.get('domain', 'general')}"
+            elif workflow_type == "risk_calculation":
+                goal = f"Calculate risk for claim approval: {input_data.get('claim_id', 'unknown')}"
             elif workflow_type == "customer_support":
                 goal = f"Provide customer support for insurance inquiry: {input_data.get('question', '')}"
             else:
@@ -494,7 +593,13 @@ print(f"Total coverage: ${total_coverage:,.2f}")
         try:
             # Determine which agents to involve
             domain = input_data.get('domain', 'general')
+            workflow_type = plan.get("workflow_type", "general")
+            
             involved_agents = [domain]
+            
+            # Add risk calculation agent for claims processing
+            if workflow_type == "claims_processing" and "risk_calculation" in self.agents:
+                involved_agents.append("risk_calculation")
             
             # Add general agent as fallback
             if domain != 'general':
@@ -558,6 +663,8 @@ print(f"Total coverage: ${total_coverage:,.2f}")
                 return await agent.analyze_auto_policy(input_data) if domain == "auto" else {"domain": domain, "analysis_type": "generic"}
             elif workflow_type == "claims_processing":
                 return await agent.process_auto_claim(input_data) if domain == "auto" else {"domain": domain, "processing_type": "generic"}
+            elif workflow_type == "risk_calculation":
+                return await agent.calculate_claim_risk(input_data) if domain == "risk_calculation" else {"domain": domain, "risk_type": "generic"}
             else:
                 return {"domain": domain, "task_type": "general", "input_data": input_data}
                 

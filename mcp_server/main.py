@@ -241,7 +241,7 @@ class FinancialRAGMCPServer:
                         },
                         "agent_type": {
                             "type": "string",
-                            "enum": ["auto", "life", "health", "dental", "general"],
+                            "enum": ["auto", "life", "health", "dental", "general", "risk_calculation"],
                             "description": "Type of insurance agent to deploy"
                         },
                         "tools": {
@@ -267,7 +267,7 @@ class FinancialRAGMCPServer:
                     "properties": {
                         "domain": {
                             "type": "string",
-                            "enum": ["auto", "life", "health", "dental", "general"],
+                            "enum": ["auto", "life", "health", "dental", "general", "risk_calculation"],
                             "description": "Insurance domain"
                         },
                         "claim_type": {
@@ -295,7 +295,7 @@ class FinancialRAGMCPServer:
                     "properties": {
                         "domain": {
                             "type": "string",
-                            "enum": ["auto", "life", "health", "dental", "general"],
+                            "enum": ["auto", "life", "health", "dental", "general", "risk_calculation"],
                             "description": "Insurance domain"
                         },
                         "policy_data": {
@@ -329,6 +329,30 @@ class FinancialRAGMCPServer:
                             "default": ""
                         }
                     }
+                }
+            },
+            {
+                "name": "calculate_claim_risk",
+                "description": "Calculate risk of approving an insurance claim based on policy coverage",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "claim_data": {
+                            "type": "object",
+                            "description": "Claim information including amount, policyholder, and policy number"
+                        },
+                        "policy_id": {
+                            "type": "string",
+                            "description": "Optional policy ID for direct matching",
+                            "default": ""
+                        },
+                        "auto_approve_threshold": {
+                            "type": "number",
+                            "description": "Percentage of coverage below which claims are auto-approved",
+                            "default": 50
+                        }
+                    },
+                    "required": ["claim_data"]
                 }
             }
         ]
@@ -504,6 +528,9 @@ class FinancialRAGMCPServer:
             elif name == "get_insurance_agent_status":
                 self.logger.info("🔍 Calling _handle_get_insurance_agent_status")
                 return await self._handle_get_insurance_agent_status(arguments, session_id)
+            elif name == "calculate_claim_risk":
+                self.logger.info("🔍 Calling _handle_calculate_claim_risk")
+                return await self._handle_calculate_claim_risk(arguments, session_id)
             else:
                 self.logger.error(f"❌ Unknown tool: {name}")
                 return {"error": f"Unknown tool: {name}", "success": False}
@@ -808,6 +835,58 @@ class FinancialRAGMCPServer:
         except Exception as e:
             self.logger.error(f"❌ Error getting insurance agent status: {e}", exc_info=True)
             return {"error": f"Error getting insurance agent status: {e}", "success": False}
+
+    async def _handle_calculate_claim_risk(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Handle claim risk calculation"""
+        try:
+            self.logger.info(f"🔍 Calculating claim risk with arguments: {arguments}")
+            
+            claim_data = arguments.get("claim_data", {})
+            policy_id = arguments.get("policy_id", "")
+            auto_approve_threshold = arguments.get("auto_approve_threshold", 50)
+            
+            # Use the risk calculation agent
+            if hasattr(self, 'insurance_orchestrator') and self.insurance_orchestrator:
+                # Create a risk calculation workflow
+                workflow_result = await self.insurance_orchestrator.orchestrate_workflow(
+                    workflow_type="risk_calculation",
+                    input_data={
+                        "claim_data": claim_data,
+                        "policy_id": policy_id,
+                        "auto_approve_threshold": auto_approve_threshold
+                    }
+                )
+                
+                return {
+                    "success": True,
+                    "risk_calculation": workflow_result,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            else:
+                # Fallback: simulate risk calculation
+                claim_amount = claim_data.get("claim_amount", 0)
+                policy_coverage = claim_data.get("policy_coverage", 100000)
+                
+                if claim_amount <= policy_coverage:
+                    risk_assessment = "auto_approve"
+                    risk_score = 10 if claim_amount <= policy_coverage * 0.5 else 30
+                else:
+                    risk_assessment = "manual_review_required"
+                    risk_score = min(100, 50 + (claim_amount - policy_coverage) / policy_coverage * 50)
+                
+                return {
+                    "success": True,
+                    "risk_assessment": risk_assessment,
+                    "claim_amount": claim_amount,
+                    "policy_coverage": policy_coverage,
+                    "risk_score": risk_score,
+                    "recommendation": f"Claim {'auto-approved' if risk_assessment == 'auto_approve' else 'requires manual review'}",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error in _handle_calculate_claim_risk: {e}")
+            return {"error": str(e)}
     
     async def handle_resource_read(self, uri: str) -> Dict[str, Any]:
         """Handle MCP resource read requests"""

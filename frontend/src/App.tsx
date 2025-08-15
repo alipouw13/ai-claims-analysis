@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MessageSquare, BarChart3, HelpCircle, FileText, LayoutDashboard } from 'lucide-react';
 import { ChatContainer } from '@/components/chat/ChatContainer';
@@ -35,6 +35,13 @@ const AppContent = () => {
 
   const { theme, setTheme } = useTheme();
 
+  // Set initial theme based on role
+  React.useEffect(() => {
+    if (role === 'admin') {
+      setTheme('admin');
+    }
+  }, [role, setTheme]);
+
   const handleModelSettingsChange = (settings: Partial<ModelSettings>) => {
     setGlobalModelSettings(prev => ({ ...prev, ...settings }));
   };
@@ -63,18 +70,20 @@ const AppContent = () => {
     <div className={`min-h-screen transition-colors duration-200 ${
       theme === 'dark' ? 'dark bg-background text-foreground' : 
       theme === 'customer' ? 'customer bg-background text-foreground' :
+      theme === 'analyst' ? 'analyst bg-background text-foreground' :
+      theme === 'underwriter' ? 'underwriter bg-background text-foreground' :
+      theme === 'admin' ? 'admin bg-background text-foreground' :
       'bg-background text-foreground'
     }`}>
       <div className="border-b bg-background">
         <div className="flex h-16 items-center px-4">
           {/* Left: Brand and product name */}
-                     <div className="flex items-center gap-2">
-             <CitigroupLogo size="md" domain={domain} />
-             <span className="ml-2 text-xs rounded bg-secondary px-2 py-0.5">
-               {role.charAt(0).toUpperCase() + role.slice(1)} Access
-             </span>
-             
-           </div>
+          <div className="flex items-center gap-3">
+            <CitigroupLogo size="md" domain={domain} />
+            <span className="text-xs rounded bg-secondary px-2 py-0.5">
+              {role.charAt(0).toUpperCase() + role.slice(1)} Access
+            </span>
+          </div>
 
           {/* Center nav removed per request */}
 
@@ -117,11 +126,22 @@ const AppContent = () => {
                   className={`px-3 py-1 text-xs rounded-sm ${role===r ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted'}`}
                   onClick={() => {
                     setRole(r);
-                    setTheme(r==='customer' ? 'customer' : 'light');
+                    // Set theme based on role
                     if (r === 'customer') {
+                      setTheme('customer');
                       // Set appropriate default tab based on domain
                       setActiveTab(domain === 'banking' ? 'chat' : 'claims');
+                    } else if (r === 'analyst') {
+                      setTheme('analyst');
+                      setActiveTab('dashboard');
+                    } else if (r === 'underwriter') {
+                      setTheme('underwriter');
+                      setActiveTab('dashboard');
+                    } else if (r === 'admin') {
+                      setTheme('admin');
+                      setActiveTab('dashboard');
                     } else {
+                      setTheme('light');
                       setActiveTab('dashboard');
                     }
                   }}

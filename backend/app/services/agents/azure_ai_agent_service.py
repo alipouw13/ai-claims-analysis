@@ -99,7 +99,7 @@ class AzureAIAgentService:
             # Enable Bing Web Search grounding tool when a connection is configured in the project
             try:
                 import os
-                from azure.ai.projects.models import BingGroundingTool
+                from azure.ai.agents.models import BingGroundingTool
                 conn_id = os.getenv("BING_CONNECTION_NAME") or os.getenv("BING_CONNECTION_ID")
                 if conn_id:
                     bing = BingGroundingTool(connection_id=conn_id)
@@ -1345,7 +1345,7 @@ class AzureAIAgentService:
                     # Attach Bing search tool if connection env provided and not already set
                     try:
                         import os
-                        from azure.ai.projects.models import BingGroundingTool
+                        from azure.ai.agents.models import BingGroundingTool
                         conn_id = os.getenv("BING_CONNECTION_NAME") or os.getenv("BING_CONNECTION_ID")
                         if conn_id:
                             bing = BingGroundingTool(connection_id=conn_id)

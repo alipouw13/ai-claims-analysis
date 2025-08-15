@@ -71,36 +71,135 @@
   }
 
   .customer {
-    /* Citigroup brand theme - Core theme variables */
+    /* Microsoft Blue theme for Customer - Core theme variables */
     --background: 0 0% 97%; /* Light gray background #f8f9fa */
-    --foreground: 212 100% 26%; /* Citi blue text #004685 */
+    --foreground: 214 100% 50%; /* Microsoft blue text #0078d4 */
     --card: 0 0% 100%; /* White cards */
-    --card-foreground: 212 100% 26%; /* Citi blue text on cards */
+    --card-foreground: 214 100% 50%; /* Microsoft blue text on cards */
     --popover: 0 0% 100%; /* White popovers */
-    --popover-foreground: 212 100% 26%; /* Citi blue text */
-    --primary: 212 100% 26%; /* Citi blue primary #004685 */
+    --popover-foreground: 214 100% 50%; /* Microsoft blue text */
+    --primary: 214 100% 50%; /* Microsoft blue primary #0078d4 */
     --primary-foreground: 0 0% 98%; /* White text on primary */
     --secondary: 0 0% 95%; /* Light gray secondary */
-    --secondary-foreground: 212 100% 26%; /* Citi blue text */
+    --secondary-foreground: 214 100% 50%; /* Microsoft blue text */
     --muted: 0 0% 93%; /* Muted background */
-    --muted-foreground: 212 50% 45%; /* Darker blue for muted text */
-    --accent: 355 82% 52%; /* Citi red accent #EE1C25 */
-    --accent-foreground: 0 0% 98%; /* White text on accent */
-    --destructive: 355 82% 52%; /* Citi red for destructive actions */
+    --muted-foreground: 214 50% 45%; /* Darker blue for muted text */
+    --accent: 45 100% 50%; /* Microsoft yellow accent #ffb900 */
+    --accent-foreground: 0 0% 20%; /* Dark text on yellow */
+    --destructive: 0 84% 60%; /* Red for destructive actions */
     --destructive-foreground: 0 0% 98%; /* White text on destructive */
-    --border: 212 20% 85%; /* Light blue-gray borders */
-    --input: 212 20% 90%; /* Light input backgrounds */
-    --ring: 212 100% 26%; /* Citi blue focus ring */
+    --border: 214 20% 85%; /* Light blue-gray borders */
+    --input: 214 20% 90%; /* Light input backgrounds */
+    --ring: 214 100% 50%; /* Microsoft blue focus ring */
     
     /* Sidebar variables - customer theme */
-    --sidebar-background: 212 100% 26%; /* Citi blue sidebar */
+    --sidebar-background: 214 100% 50%; /* Microsoft blue sidebar */
     --sidebar-foreground: 0 0% 98%; /* White text */
-    --sidebar-primary: 355 82% 52%; /* Citi red primary */
-    --sidebar-primary-foreground: 0 0% 100%; /* White text */
-    --sidebar-accent: 212 80% 30%; /* Darker blue accent */
+    --sidebar-primary: 45 100% 50%; /* Microsoft yellow primary */
+    --sidebar-primary-foreground: 0 0% 20%; /* Dark text */
+    --sidebar-accent: 214 80% 30%; /* Darker blue accent */
     --sidebar-accent-foreground: 0 0% 95%; /* Light text */
-    --sidebar-border: 212 80% 20%; /* Dark blue border */
-    --sidebar-ring: 355 82% 52%; /* Citi red ring */
+    --sidebar-border: 214 80% 20%; /* Dark blue border */
+    --sidebar-ring: 45 100% 50%; /* Microsoft yellow ring */
+  }
+
+  .analyst {
+    /* Hunter Green theme for Analyst - Core theme variables */
+    --background: 0 0% 97%; /* Light gray background */
+    --foreground: 120 100% 25%; /* Hunter green text #1a5f1a */
+    --card: 0 0% 100%; /* White cards */
+    --card-foreground: 120 100% 25%; /* Hunter green text on cards */
+    --popover: 0 0% 100%; /* White popovers */
+    --popover-foreground: 120 100% 25%; /* Hunter green text */
+    --primary: 120 100% 25%; /* Hunter green primary #1a5f1a */
+    --primary-foreground: 0 0% 98%; /* White text on primary */
+    --secondary: 0 0% 95%; /* Light gray secondary */
+    --secondary-foreground: 120 100% 25%; /* Hunter green text */
+    --muted: 0 0% 93%; /* Muted background */
+    --muted-foreground: 120 50% 35%; /* Darker green for muted text */
+    --accent: 0 100% 50%; /* Microsoft red accent #e81123 */
+    --accent-foreground: 0 0% 98%; /* White text on accent */
+    --destructive: 0 84% 60%; /* Red for destructive actions */
+    --destructive-foreground: 0 0% 98%; /* White text on destructive */
+    --border: 120 20% 85%; /* Light green-gray borders */
+    --input: 120 20% 90%; /* Light input backgrounds */
+    --ring: 120 100% 25%; /* Hunter green focus ring */
+    
+    /* Sidebar variables - analyst theme */
+    --sidebar-background: 120 100% 25%; /* Hunter green sidebar */
+    --sidebar-foreground: 0 0% 98%; /* White text */
+    --sidebar-primary: 0 100% 50%; /* Microsoft red primary */
+    --sidebar-primary-foreground: 0 0% 98%; /* White text */
+    --sidebar-accent: 120 80% 20%; /* Darker green accent */
+    --sidebar-accent-foreground: 0 0% 95%; /* Light text */
+    --sidebar-border: 120 80% 15%; /* Dark green border */
+    --sidebar-ring: 0 100% 50%; /* Microsoft red ring */
+  }
+
+  .underwriter {
+    /* Hunter Green theme for Underwriter - Core theme variables */
+    --background: 0 0% 97%; /* Light gray background */
+    --foreground: 120 100% 25%; /* Hunter green text #1a5f1a */
+    --card: 0 0% 100%; /* White cards */
+    --card-foreground: 120 100% 25%; /* Hunter green text on cards */
+    --popover: 0 0% 100%; /* White popovers */
+    --popover-foreground: 120 100% 25%; /* Hunter green text */
+    --primary: 120 100% 25%; /* Hunter green primary #1a5f1a */
+    --primary-foreground: 0 0% 98%; /* White text on primary */
+    --secondary: 0 0% 95%; /* Light gray secondary */
+    --secondary-foreground: 120 100% 25%; /* Hunter green text */
+    --muted: 0 0% 93%; /* Muted background */
+    --muted-foreground: 120 50% 35%; /* Darker green for muted text */
+    --accent: 0 100% 50%; /* Microsoft red accent #e81123 */
+    --accent-foreground: 0 0% 98%; /* White text on accent */
+    --destructive: 0 84% 60%; /* Red for destructive actions */
+    --destructive-foreground: 0 0% 98%; /* White text on destructive */
+    --border: 120 20% 85%; /* Light green-gray borders */
+    --input: 120 20% 90%; /* Light input backgrounds */
+    --ring: 120 100% 25%; /* Hunter green focus ring */
+    
+    /* Sidebar variables - underwriter theme */
+    --sidebar-background: 120 100% 25%; /* Hunter green sidebar */
+    --sidebar-foreground: 0 0% 98%; /* White text */
+    --sidebar-primary: 0 100% 50%; /* Microsoft red primary */
+    --sidebar-primary-foreground: 0 0% 98%; /* White text */
+    --sidebar-accent: 120 80% 20%; /* Darker green accent */
+    --sidebar-accent-foreground: 0 0% 95%; /* Light text */
+    --sidebar-border: 120 80% 15%; /* Dark green border */
+    --sidebar-ring: 0 100% 50%; /* Microsoft red ring */
+  }
+
+  .admin {
+    /* Black and White theme for Admin - Core theme variables */
+    --background: 0 0% 100%; /* White background */
+    --foreground: 0 0% 0%; /* Black text */
+    --card: 0 0% 100%; /* White cards */
+    --card-foreground: 0 0% 0%; /* Black text on cards */
+    --popover: 0 0% 100%; /* White popovers */
+    --popover-foreground: 0 0% 0%; /* Black text */
+    --primary: 0 0% 0%; /* Black primary */
+    --primary-foreground: 0 0% 100%; /* White text on primary */
+    --secondary: 0 0% 95%; /* Light gray secondary */
+    --secondary-foreground: 0 0% 0%; /* Black text */
+    --muted: 0 0% 93%; /* Muted background */
+    --muted-foreground: 0 0% 45%; /* Gray for muted text */
+    --accent: 0 0% 0%; /* Black accent */
+    --accent-foreground: 0 0% 100%; /* White text on accent */
+    --destructive: 0 84% 60%; /* Red for destructive actions */
+    --destructive-foreground: 0 0% 98%; /* White text on destructive */
+    --border: 0 0% 85%; /* Light gray borders */
+    --input: 0 0% 90%; /* Light input backgrounds */
+    --ring: 0 0% 0%; /* Black focus ring */
+    
+    /* Sidebar variables - admin theme */
+    --sidebar-background: 0 0% 0%; /* Black sidebar */
+    --sidebar-foreground: 0 0% 100%; /* White text */
+    --sidebar-primary: 0 0% 0%; /* Black primary */
+    --sidebar-primary-foreground: 0 0% 100%; /* White text */
+    --sidebar-accent: 0 0% 20%; /* Dark gray accent */
+    --sidebar-accent-foreground: 0 0% 95%; /* Light text */
+    --sidebar-border: 0 0% 20%; /* Dark gray border */
+    --sidebar-ring: 0 0% 0%; /* Black ring */
   }
 
   /* Custom styling for customer theme */
@@ -132,6 +231,84 @@
   }
 
   .customer .text-primary-foreground {
+    color: hsl(var(--primary-foreground)) !important;
+  }
+
+  /* Custom styling for analyst theme */
+  .analyst [data-radix-tabs-trigger] {
+    background-color: transparent;
+    color: hsl(var(--foreground));
+    border: 1px solid transparent;
+  }
+
+  .analyst [data-radix-tabs-trigger]:hover {
+    background-color: hsl(var(--muted));
+    color: hsl(var(--foreground));
+  }
+
+  .analyst [data-radix-tabs-trigger][data-state="active"] {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary));
+  }
+
+  .analyst .bg-primary {
+    background-color: hsl(var(--primary)) !important;
+  }
+
+  .analyst .text-primary-foreground {
+    color: hsl(var(--primary-foreground)) !important;
+  }
+
+  /* Custom styling for underwriter theme */
+  .underwriter [data-radix-tabs-trigger] {
+    background-color: transparent;
+    color: hsl(var(--foreground));
+    border: 1px solid transparent;
+  }
+
+  .underwriter [data-radix-tabs-trigger]:hover {
+    background-color: hsl(var(--muted));
+    color: hsl(var(--foreground));
+  }
+
+  .underwriter [data-radix-tabs-trigger][data-state="active"] {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary));
+  }
+
+  .underwriter .bg-primary {
+    background-color: hsl(var(--primary)) !important;
+  }
+
+  .underwriter .text-primary-foreground {
+    color: hsl(var(--primary-foreground)) !important;
+  }
+
+  /* Custom styling for admin theme */
+  .admin [data-radix-tabs-trigger] {
+    background-color: transparent;
+    color: hsl(var(--foreground));
+    border: 1px solid transparent;
+  }
+
+  .admin [data-radix-tabs-trigger]:hover {
+    background-color: hsl(var(--muted));
+    color: hsl(var(--foreground));
+  }
+
+  .admin [data-radix-tabs-trigger][data-state="active"] {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary));
+  }
+
+  .admin .bg-primary {
+    background-color: hsl(var(--primary)) !important;
+  }
+
+  .admin .text-primary-foreground {
     color: hsl(var(--primary-foreground)) !important;
   }
 

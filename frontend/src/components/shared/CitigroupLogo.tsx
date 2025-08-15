@@ -1,4 +1,5 @@
 import React from 'react';
+import msftLogo from '@/assets/msft-logo.png';
 
 interface CitigroupLogoProps {
   className?: string;
@@ -12,28 +13,31 @@ export const CitigroupLogo: React.FC<CitigroupLogoProps> = ({
   domain = 'insurance',
 }) => {
   const sizeClasses = {
-    sm: 'h-6 w-24',
-    md: 'h-8 w-32',
-    lg: 'h-12 w-48'
+    sm: 'h-8 w-auto',
+    md: 'h-10 w-auto',
+    lg: 'h-14 w-auto'
   };
 
   const title = domain === 'banking' ? 'MSFT Banking' : 'MSFT Insurance';
 
   return (
-    <div className={`${sizeClasses[size]} ${className}`}>
-      <svg
-        viewBox="0 0 240 50"
-        xmlns="http://www.w3.org/2000/svg"
-        className="w-full h-full"
-      >
-        {/* MSFT wordmark (dynamic by domain) */}
-        <text x="0" y="28" fontSize="20" fontWeight="700" fill="#1F2937" fontFamily="Segoe UI, Arial, sans-serif">
+    <div className={`flex items-center gap-3 ${className}`}>
+      {/* Microsoft Logo */}
+      <img 
+        src={msftLogo} 
+        alt="Microsoft" 
+        className={`${sizeClasses[size]} object-contain`}
+      />
+      
+      {/* Text Content */}
+      <div className="flex flex-col">
+        <span className="text-xl font-bold text-foreground leading-tight">
           {title}
-        </text>
-        <text x="0" y="45" fontSize="12" fontWeight="500" fill="#6B7280" fontFamily="Segoe UI, Arial, sans-serif">
+        </span>
+        <span className="text-sm font-medium text-muted-foreground leading-tight">
           AI Assistant
-        </text>
-      </svg>
+        </span>
+      </div>
     </div>
   );
 };

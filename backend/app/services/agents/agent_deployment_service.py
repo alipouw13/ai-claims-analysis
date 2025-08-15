@@ -5,6 +5,8 @@ This service handles deploying agents with integrated tools using the new Azure 
 - Azure AI Search tools
 - Bing Search tools for grounding
 - Knowledge Base tools
+- Code interpreter
+- File Search
 
 Based on Azure AI Foundry documentation:
 https://learn.microsoft.com/en-us/azure/ai-foundry/agents/how-to/tools/azure-ai-search?tabs=pythonsdk
