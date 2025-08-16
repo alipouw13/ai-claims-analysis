@@ -277,7 +277,7 @@ export const SubmitClaim: React.FC<SubmitClaimProps> = ({ onClaimUploaded, onDoc
     }, 500); // Poll every 500ms for better responsiveness
   };
 
-    const onUpload = async () => {
+  const onUpload = async () => {
     if (files.length === 0) return;
     
     setSubmitting(true);
@@ -860,7 +860,7 @@ Date Prepared: 2021-07-26
                    >
                      <RefreshCw className="h-4 w-4 mr-2" />
                      Retry
-                   </Button>
+          </Button>
                  </div>
                ) : (
                  <div className="bg-gray-50 rounded-lg p-4 h-full border border-gray-200">

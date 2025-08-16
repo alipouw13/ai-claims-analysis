@@ -32,7 +32,7 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(l
 logging.getLogger("azure.identity").setLevel(logging.WARNING)
 
 from app.core.config import settings
-from app.api.routes import knowledge_base, chat, admin, documents, qa, sec_documents, deployments, evaluation, workflows, agents, insurance_orchestration
+from app.api.routes import knowledge_base, chat, admin, documents, qa, sec_documents, deployments, evaluation, workflows, agents, insurance_orchestration, insurance_documents
 from app.services.azure_services import AzureServiceManager
 from app.services.agents.azure_ai_agent_service import AzureAIAgentService
 from app.services.bootstrap_vectorization import bootstrap_policy_claims_vectorization
@@ -223,6 +223,7 @@ application.include_router(sec_documents.router, tags=["SEC Documents"])
 application.include_router(workflows.router, prefix="/api/v1", tags=["Workflows"])
 application.include_router(agents.router, prefix="/api/v1/agents", tags=["Agents"])
 application.include_router(insurance_orchestration.router, prefix="/api/v1/insurance", tags=["Insurance Orchestration"])
+application.include_router(insurance_documents.router, prefix="/api/v1/insurance-documents", tags=["Insurance Documents"])
 
 
 @application.get("/")

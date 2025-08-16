@@ -1,53 +1,23 @@
 from pydantic_settings import BaseSettings
 from typing import Optional, List
-import os
-from dotenv import load_dotenv
-from pathlib import Path
-
-def _load_env_files():
-    """Load .env/.enc from common locations: repo root and backend folder.
-    Ensures values in .enc override .env, and backend-specific files override root.
-    """
-    try:
-        here = Path(__file__).resolve()
-        backend_dir = here.parents[2]  # .../backend
-        repo_root = here.parents[3]    # repo root
-        candidates = [
-            repo_root / ".env",
-            repo_root / ".enc",
-            backend_dir / ".env",
-            backend_dir / ".enc",
-            Path.cwd() / ".env",
-            Path.cwd() / ".enc",
-        ]
-        # Load in order, later calls override earlier
-        for f in candidates:
-            if f.exists():
-                # .enc should override .env
-                load_dotenv(dotenv_path=str(f), override=True)
-    except Exception:
-        # Non-fatal: continue with OS env
-        pass
-
-_load_env_files()
 
 class Settings(BaseSettings):
-    AZURE_TENANT_ID: str = os.getenv("AZURE_TENANT_ID", "")
-    AZURE_CLIENT_ID: str = os.getenv("AZURE_CLIENT_ID", "")
-    AZURE_CLIENT_SECRET: str = os.getenv("AZURE_CLIENT_SECRET", "")
+    AZURE_TENANT_ID: str = ""
+    AZURE_CLIENT_ID: str = ""
+    AZURE_CLIENT_SECRET: str = ""
     
-    AZURE_SEARCH_SERVICE_NAME: str = os.getenv("AZURE_SEARCH_SERVICE_NAME", "")
-    AZURE_SEARCH_INDEX_NAME: str = os.getenv("AZURE_SEARCH_INDEX_NAME", "financial-documents")
+    AZURE_SEARCH_SERVICE_NAME: str = ""
+    AZURE_SEARCH_INDEX_NAME: str = "financial-documents"
     # Separate indexes for policy documents vs claim documents
-    AZURE_SEARCH_POLICY_INDEX_NAME: str = os.getenv("AZURE_SEARCH_POLICY_INDEX_NAME", "policy-documents")
-    AZURE_SEARCH_CLAIMS_INDEX_NAME: str = os.getenv("AZURE_SEARCH_CLAIMS_INDEX_NAME", "claims-documents")
-    AZURE_SEARCH_QUERY_BOTH_INDEXES: bool = os.getenv("AZURE_SEARCH_QUERY_BOTH_INDEXES", "true").lower() == "true"
-    AZURE_SEARCH_API_VERSION: str = os.getenv("AZURE_SEARCH_API_VERSION", "2023-11-01")
-    AZURE_SEARCH_API_KEY: str = os.getenv("AZURE_SEARCH_API_KEY", "")
+    AZURE_SEARCH_POLICY_INDEX_NAME: str = "rag-policy"
+    AZURE_SEARCH_CLAIMS_INDEX_NAME: str = "rag-claims"
+    AZURE_SEARCH_QUERY_BOTH_INDEXES: bool = True
+    AZURE_SEARCH_API_VERSION: str = "2023-11-01"
+    AZURE_SEARCH_API_KEY: str = ""
     
     # Additional Azure AI Search configurations for Agentic RAG
-    AZURE_SEARCH_AGENT_NAME: str = os.getenv("AZURE_SEARCH_AGENT_NAME", "financial-qa-agent")
-    AZURE_OPENAI_CHAT_MODEL_NAME: str = os.getenv("AZURE_OPENAI_CHAT_MODEL_NAME", "gpt-4o-mini")
+    AZURE_SEARCH_AGENT_NAME: str = "financial-qa-agent"
+    AZURE_OPENAI_CHAT_MODEL_NAME: str = "gpt-4o-mini"
     
     @property
     def AZURE_AI_SEARCH_ENDPOINT(self) -> str:
@@ -61,12 +31,12 @@ class Settings(BaseSettings):
         """Alias for backward compatibility"""
         return self.AZURE_SEARCH_INDEX_NAME
     
-    AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-    AZURE_OPENAI_API_KEY: str = os.getenv("AZURE_OPENAI_API_KEY", "")
-    AZURE_OPENAI_API_VERSION: str = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
-    AZURE_OPENAI_CHAT_DEPLOYMENT_NAME: str = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "chat4omini")
-    AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: str = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME", "text-embedding-ada-002")
-    AZURE_OPENAI_DEPLOYMENT_NAME: str = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "chat4omini")
+    AZURE_OPENAI_ENDPOINT: str = ""
+    AZURE_OPENAI_API_KEY: str = ""
+    AZURE_OPENAI_API_VERSION: str = "2024-02-01"
+    AZURE_OPENAI_CHAT_DEPLOYMENT_NAME: str = "chat4omini"
+    AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: str = "text-embedding-ada-002"
+    AZURE_OPENAI_DEPLOYMENT_NAME: str = "chat4omini"
     
     AVAILABLE_EMBEDDING_MODELS: List[str] = [
         "text-embedding-ada-002",
@@ -87,70 +57,56 @@ class Settings(BaseSettings):
         "deepseek-chat"
     ]
     
-    AZURE_COSMOS_ENDPOINT: str = os.getenv("AZURE_COSMOS_ENDPOINT", "")
-    AZURE_COSMOS_DATABASE_NAME: str = os.getenv("AZURE_COSMOS_DATABASE_NAME", "rag-financial-db")
-    AZURE_COSMOS_CONTAINER_NAME: str = os.getenv("AZURE_COSMOS_CONTAINER_NAME", "chat-sessions")
-    AZURE_COSMOS_EVALUATION_CONTAINER_NAME: str = os.getenv("AZURE_COSMOS_EVALUATION_CONTAINER_NAME", "evaluation-results")
-    AZURE_COSMOS_TOKEN_USAGE_CONTAINER_NAME: str = os.getenv("AZURE_COSMOS_TOKEN_USAGE_CONTAINER_NAME", "token-usage")
+    AZURE_COSMOS_ENDPOINT: str = ""
+    AZURE_COSMOS_DATABASE_NAME: str = "rag-financial-db"
+    AZURE_COSMOS_CONTAINER_NAME: str = "chat-sessions"
+    AZURE_COSMOS_EVALUATION_CONTAINER_NAME: str = "evaluation-results"
+    AZURE_COSMOS_TOKEN_USAGE_CONTAINER_NAME: str = "token-usage"
     
-    AZURE_FORM_RECOGNIZER_ENDPOINT: str = os.getenv("AZURE_FORM_RECOGNIZER_ENDPOINT", "")
+    AZURE_FORM_RECOGNIZER_ENDPOINT: str = ""
     
-    AZURE_AI_FOUNDRY_PROJECT_NAME: str = os.getenv("AZURE_AI_FOUNDRY_PROJECT_NAME", "")
-    AZURE_AI_FOUNDRY_RESOURCE_GROUP: str = os.getenv("AZURE_AI_FOUNDRY_RESOURCE_GROUP", "")
-    AZURE_SUBSCRIPTION_ID: str = os.getenv("AZURE_SUBSCRIPTION_ID", "")
-    AZURE_AI_FOUNDRY_WORKSPACE_NAME: str = os.getenv("AZURE_AI_FOUNDRY_WORKSPACE_NAME", "")
+    AZURE_AI_FOUNDRY_PROJECT_NAME: str = ""
+    AZURE_AI_FOUNDRY_RESOURCE_GROUP: str = ""
+    AZURE_SUBSCRIPTION_ID: str = ""
+    AZURE_AI_FOUNDRY_WORKSPACE_NAME: str = ""
     # Support multiple aliases for AI Foundry endpoint to avoid configuration mismatches
-    _EP_ENV = (
-        os.getenv("AZURE_AI_PROJECT_ENDPOINT")
-        or os.getenv("AZURE_AI_FOUNDRY_ENDPOINT")
-        or os.getenv("AI_FOUNDRY_ENDPOINT")
-        or os.getenv("AZUREAI_PROJECT_ENDPOINT")
-        or os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
-        or ""
-    )
-    # Best-effort heuristic: if still empty, try to find any env var that looks like a project endpoint
-    if not _EP_ENV:
-        for _k, _v in os.environ.items():
-            if "PROJECT_ENDPOINT" in _k.upper() and _v.startswith("http"):
-                _EP_ENV = _v
-                break
-    AZURE_AI_PROJECT_ENDPOINT: str = _EP_ENV
+    AZURE_AI_PROJECT_ENDPOINT: str = ""
     # Bing Search configuration (for web grounding fallback)
-    BING_SEARCH_ENDPOINT: str = os.getenv("BING_SEARCH_ENDPOINT", "https://api.bing.microsoft.com/v7.0/search")
-    BING_SEARCH_SUBSCRIPTION_KEY: Optional[str] = os.getenv("BING_SEARCH_SUBSCRIPTION_KEY")
+    BING_SEARCH_ENDPOINT: str = "https://api.bing.microsoft.com/v7.0/search"
+    BING_SEARCH_SUBSCRIPTION_KEY: Optional[str] = None
     # Azure Speech Services (server STT)
-    AZURE_SPEECH_KEY: Optional[str] = os.getenv("AZURE_SPEECH_KEY")
-    AZURE_SPEECH_REGION: Optional[str] = os.getenv("AZURE_SPEECH_REGION")
+    AZURE_SPEECH_KEY: Optional[str] = None
+    AZURE_SPEECH_REGION: Optional[str] = None
     # Azure Monitor and Application Insights Configuration
-    azure_monitor_connection_string: str = os.getenv("AZURE_MONITOR_CONNECTION_STRING", "")
-    azure_key_vault_url: str = os.getenv("AZURE_KEY_VAULT_URL", "")
-    enable_telemetry: bool = os.getenv("ENABLE_TELEMETRY", "false").lower() == "true"
+    azure_monitor_connection_string: str = ""
+    azure_key_vault_url: str = ""
+    enable_telemetry: bool = False
     
-    mcp_enabled: bool = os.getenv("MCP_ENABLED", "true").lower() == "true"
-    mcp_server_port: int = int(os.getenv("MCP_SERVER_PORT", "3001"))
-    a2a_enabled: bool = os.getenv("A2A_ENABLED", "true").lower() == "true"
-    a2a_discovery_endpoint: str = os.getenv("A2A_DISCOVERY_ENDPOINT", "https://your-a2a-discovery.azure.com/")
+    mcp_enabled: bool = True
+    mcp_server_port: int = 3001
+    a2a_enabled: bool = True
+    a2a_discovery_endpoint: str = "https://your-a2a-discovery.azure.com/"
     
-    max_document_size_mb: int = int(os.getenv("MAX_DOCUMENT_SIZE_MB", "50"))
-    supported_document_types: str = os.getenv("SUPPORTED_DOCUMENT_TYPES", "pdf,docx,xlsx,txt")
-    chunk_size: int = int(os.getenv("CHUNK_SIZE", "1000"))
-    chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "200"))
-    max_chunks_per_document: int = int(os.getenv("MAX_CHUNKS_PER_DOCUMENT", "500"))
+    max_document_size_mb: int = 50
+    supported_document_types: str = "pdf,docx,xlsx,txt"
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+    max_chunks_per_document: int = 500
     
     # Evaluation Configuration
-    AZURE_EVALUATION_ENDPOINT: str = os.getenv("AZURE_EVALUATION_ENDPOINT", "")
-    AZURE_EVALUATION_API_KEY: str = os.getenv("AZURE_EVALUATION_API_KEY", "")
-    AZURE_EVALUATION_MODEL_DEPLOYMENT: str = os.getenv("AZURE_EVALUATION_MODEL_DEPLOYMENT", "gpt-4o-mini")
-    AZURE_EVALUATION_MODEL_NAME: str = os.getenv("AZURE_EVALUATION_MODEL_NAME", "gpt-4o-mini")
+    AZURE_EVALUATION_ENDPOINT: str = ""
+    AZURE_EVALUATION_API_KEY: str = ""
+    AZURE_EVALUATION_MODEL_DEPLOYMENT: str = "gpt-4o-mini"
+    AZURE_EVALUATION_MODEL_NAME: str = "gpt-4o-mini"
     
     # Azure AI Foundry Configuration for Evaluation
-    AZURE_AI_PROJECT_CONNECTION_STRING: str = os.getenv("AZURE_AI_PROJECT_CONNECTION_STRING", "")
-    AZURE_AI_PROJECT_NAME: str = os.getenv("AZURE_AI_PROJECT_NAME", "")
-    AZURE_AI_HUB_NAME: str = os.getenv("AZURE_AI_HUB_NAME", "")
+    AZURE_AI_PROJECT_CONNECTION_STRING: str = ""
+    AZURE_AI_PROJECT_NAME: str = ""
+    AZURE_AI_HUB_NAME: str = ""
     
     # Evaluation Settings
-    EVALUATION_ENABLED: bool = os.getenv("EVALUATION_ENABLED", "true").lower() == "true"
-    DEFAULT_EVALUATOR_TYPE: str = os.getenv("DEFAULT_EVALUATOR_TYPE", "custom")  # "foundry" or "custom"
+    EVALUATION_ENABLED: bool = True
+    DEFAULT_EVALUATOR_TYPE: str = "custom"  # "foundry" or "custom"
     
     AVAILABLE_EVALUATOR_TYPES: List[str] = ["foundry", "custom"]
     AVAILABLE_EVALUATION_MODELS: List[str] = [
@@ -161,32 +117,32 @@ class Settings(BaseSettings):
         "gpt-4"
     ]
     
-    rate_limit_requests_per_minute: int = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "100"))
-    rate_limit_tokens_per_minute: int = int(os.getenv("RATE_LIMIT_TOKENS_PER_MINUTE", "50000"))
+    rate_limit_requests_per_minute: int = 100
+    rate_limit_tokens_per_minute: int = 50000
     
-    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    cache_ttl_seconds: int = int(os.getenv("CACHE_TTL_SECONDS", "3600"))
+    redis_url: str = "redis://localhost:6379/0"
+    cache_ttl_seconds: int = 3600
     
-    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "your-jwt-secret-key-here")
-    jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
-    jwt_expiration_hours: int = int(os.getenv("JWT_EXPIRATION_HOURS", "24"))
+    jwt_secret_key: str = "your-jwt-secret-key-here"
+    jwt_algorithm: str = "HS256"
+    jwt_expiration_hours: int = 24
     
-    AZURE_STORAGE_ACCOUNT_NAME: Optional[str] = os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
-    AZURE_STORAGE_ACCOUNT_KEY: Optional[str] = os.getenv("AZURE_STORAGE_ACCOUNT_KEY")
-    AZURE_STORAGE_CONTAINER_NAME: str = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "financial-documents")
+    AZURE_STORAGE_ACCOUNT_NAME: Optional[str] = None
+    AZURE_STORAGE_ACCOUNT_KEY: Optional[str] = None
+    AZURE_STORAGE_CONTAINER_NAME: str = "financial-documents"
     
-    mock_azure_services: bool = os.getenv("MOCK_AZURE_SERVICES", "false").lower() == "true"
-    enable_debug_logging: bool = os.getenv("ENABLE_DEBUG_LOGGING", "false").lower() == "true"
-    enable_performance_profiling: bool = os.getenv("ENABLE_PERFORMANCE_PROFILING", "false").lower() == "true"
-    environment: str = os.getenv("ENVIRONMENT", "development")
-    log_level: str = os.getenv("LOG_LEVEL", "INFO")
-    api_host: str = os.getenv("API_HOST", "0.0.0.0")
-    api_port: int = int(os.getenv("API_PORT", "8000"))
-    allowed_origins: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")
+    mock_azure_services: bool = False
+    enable_debug_logging: bool = False
+    enable_performance_profiling: bool = False
+    environment: str = "development"
+    log_level: str = "INFO"
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+    allowed_origins: str = "http://localhost:3000,http://localhost:5173"
     
     # MCP (Model Context Protocol) Configuration
-    MCP_SERVER_URL: Optional[str] = os.getenv("MCP_SERVER_URL", None)
-    MCP_SERVER_TIMEOUT: int = int(os.getenv("MCP_SERVER_TIMEOUT", "30"))
+    MCP_SERVER_URL: Optional[str] = None
+    MCP_SERVER_TIMEOUT: int = 30
     
     # Additional constants (not environment-configurable)
     MAX_TOKENS_PER_REQUEST: int = 4000
@@ -198,6 +154,8 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
+        case_sensitive = False
         extra = "allow"  # Allow extra fields to prevent validation errors
 
 settings = Settings()
