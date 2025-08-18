@@ -445,18 +445,18 @@ async def get_banking_dashboard_stats():
             logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
             return {"stats": {}, "status": "azure_initialization_failed"}
 
-        # Get SEC documents from the rag-sec index
-        financial_index = "rag-sec"  # Use the correct index name for SEC documents
-        if not financial_index:
-            logger.warning("No financial documents index configured")
-            return {"stats": {}, "status": "no_financial_index_configured"}
+        # Get SEC documents from the main financial documents index (same as SEC Document Library)
+        # Use the main search client instead of a specific index to match SEC Document Library behavior
+        if not azure_manager.search_client:
+            logger.warning("No search client configured")
+            return {"stats": {}, "status": "no_search_client_configured"}
 
         try:
             # Get all SEC documents using the same comprehensive approach as SEC Document Library
             all_results: List[Dict[str, Any]] = []
             skip = 0
             batch_size = 1000
-            client = azure_manager.get_search_client_for_index(financial_index)
+            client = azure_manager.search_client  # Use the main search client (financial-documents index)
             
             while True:
                 search_results = await client.search(
