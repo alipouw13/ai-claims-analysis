@@ -110,7 +110,7 @@ async def get_document_batch_status(batch_id: str)
 
 ```bash
 # Azure Document Intelligence (Form Recognizer)
-AZURE_FORM_RECOGNIZER_ENDPOINT=https://your-resource.cognitiveservices.azure.com/
+AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://your-resource.cognitiveservices.azure.com/
 AZURE_FORM_RECOGNIZER_KEY=your-key-here
 
 # Azure Search Indexes

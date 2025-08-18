@@ -32,7 +32,7 @@ logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(l
 logging.getLogger("azure.identity").setLevel(logging.WARNING)
 
 from app.core.config import settings
-from app.api.routes import knowledge_base, chat, admin, documents, qa, sec_documents, deployments, evaluation, workflows, agents, insurance_orchestration, insurance_documents
+from app.api.routes import knowledge_base, chat, admin, documents, qa, sec_documents, deployments, evaluation, workflows, agents, insurance_orchestration, batch
 from app.services.azure_services import AzureServiceManager
 from app.services.agents.azure_ai_agent_service import AzureAIAgentService
 from app.services.bootstrap_vectorization import bootstrap_policy_claims_vectorization
@@ -60,14 +60,26 @@ async def lifespan(app: FastAPI):
     
     azure_manager = None
     try:
+        logger.info("🔧 Initializing Azure Service Manager...")
         azure_manager = AzureServiceManager()
+        logger.info("✅ AzureServiceManager instance created")
+        
+        logger.info("🔧 Calling azure_manager.initialize()...")
         await azure_manager.initialize()
+        logger.info("✅ AzureServiceManager initialized successfully")
+        
+        # Store in app state BEFORE any other operations
         app.state.azure_manager = azure_manager
+        logger.info("✅ AzureServiceManager stored in app.state")
+        
         # Kick off best-effort bootstrap vectorization of sample policies/claims
         try:
+            logger.info("🔧 Starting bootstrap vectorization task...")
             asyncio.create_task(bootstrap_policy_claims_vectorization(azure_manager))
+            logger.info("✅ Bootstrap vectorization task scheduled")
         except Exception as boot_err:
-            logger.warning(f"Bootstrap vectorization task failed to schedule: {boot_err}")
+            logger.warning(f"❌ Bootstrap vectorization task failed to schedule: {boot_err}")
+            logger.warning("This is not critical - the system will still work for uploads")
         
         if hasattr(azure_manager, 'openai_client'):
             # Temporarily disable evaluation due to package conflicts
@@ -118,7 +130,21 @@ async def lifespan(app: FastAPI):
 
         logger.info("Azure services initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize services: {e}")
+        logger.error(f"❌ Failed to initialize Azure services: {e}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
+        
+        # Even if initialization fails, try to create a minimal azure_manager
+        try:
+            logger.info("🔧 Attempting to create minimal AzureServiceManager...")
+            azure_manager = AzureServiceManager()
+            # Don't call initialize() if it failed before
+            app.state.azure_manager = azure_manager
+            logger.warning("⚠️ Minimal AzureServiceManager created - some features may not work")
+        except Exception as fallback_err:
+            logger.error(f"❌ Failed to create even minimal AzureServiceManager: {fallback_err}")
+            app.state.azure_manager = None
     
     yield
     
@@ -223,7 +249,7 @@ application.include_router(sec_documents.router, tags=["SEC Documents"])
 application.include_router(workflows.router, prefix="/api/v1", tags=["Workflows"])
 application.include_router(agents.router, prefix="/api/v1/agents", tags=["Agents"])
 application.include_router(insurance_orchestration.router, prefix="/api/v1/insurance", tags=["Insurance Orchestration"])
-application.include_router(insurance_documents.router, prefix="/api/v1/insurance-documents", tags=["Insurance Documents"])
+application.include_router(batch.router, prefix="/api/v1", tags=["Batch"])
 
 
 @application.get("/")

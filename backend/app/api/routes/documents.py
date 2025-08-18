@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Request, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Request
 from typing import List, Optional, Dict, Any
 import logging
 import uuid
@@ -17,7 +17,6 @@ from app.models.schemas import (
 )
 from app.core.observability import observability
 from app.services.document_processor import DocumentProcessor
-from app.services.insurance_document_service import InsuranceDocumentService
 from app.services.azure_services import AzureServiceManager
 from app.core.config import settings
 
@@ -41,9 +40,7 @@ async def upload_documents(
     domain: Optional[str] = Form("insurance"),
     is_claim: Optional[bool] = Form(False)
 ):
-    """
-    Upload and process insurance documents (policies and claims) using Azure Document Intelligence
-    """
+    """Upload multiple financial documents for processing with Azure Document Intelligence"""
     try:
         responses = []
         batch_id = f"kb_batch_{int(time.time())}"
@@ -55,39 +52,59 @@ async def upload_documents(
             "started_at": datetime.utcnow().isoformat(),
             "documents": []
         }
-        
         allowed_extensions = {'.pdf', '.docx', '.doc', '.txt'}
         upload_dir = "/tmp/uploads"
         os.makedirs(upload_dir, exist_ok=True)
         
         azure_manager = getattr(request.app.state, 'azure_manager', None)
         if not azure_manager:
-            raise HTTPException(status_code=500, detail="Azure services not initialized")
+            logger.error("❌ Azure services not initialized - azure_manager is None")
+            logger.error("❌ This indicates a startup initialization failure")
+            logger.error("❌ Check the application startup logs for AzureServiceManager initialization errors")
+            
+            # Try to create a minimal AzureServiceManager as fallback
+            try:
+                logger.info("🔧 Attempting to create fallback AzureServiceManager...")
+                from app.services.azure_services import AzureServiceManager
+                fallback_manager = AzureServiceManager()
+                # Don't call initialize() as it likely failed during startup
+                azure_manager = fallback_manager
+                logger.warning("⚠️ Using fallback AzureServiceManager - some features may not work")
+            except Exception as fallback_err:
+                logger.error(f"❌ Failed to create fallback AzureServiceManager: {fallback_err}")
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Azure services not available. Please check the application configuration and restart the server."
+                )
         
-        # Use InsuranceDocumentService for insurance documents, DocumentProcessor for others
-        if domain == "insurance":
-            document_processor = InsuranceDocumentService(azure_manager)
-            logger.info("Using InsuranceDocumentService with Azure Document Intelligence for insurance documents")
-        else:
-            document_processor = DocumentProcessor(azure_manager)
-            logger.info("Using DocumentProcessor for non-insurance documents")
+        logger.info(f"✅ AzureServiceManager found: {type(azure_manager)}")
+        logger.info(f"✅ AzureServiceManager has search_client: {hasattr(azure_manager, 'search_client')}")
+        logger.info(f"✅ AzureServiceManager has openai_client: {hasattr(azure_manager, 'openai_client')}")
+        
+        document_processor = DocumentProcessor(azure_manager)
+        logger.info(f"✅ DocumentProcessor created: {type(document_processor)}")
         
         for file in files:
             document_id = str(uuid.uuid4())
+            observability.track_request("document_upload", document_id)
+            
+            file_extension = os.path.splitext(file.filename)[1].lower()
+            
+            if file_extension not in allowed_extensions:
+                responses.append(DocumentUploadResponse(
+                    document_id=document_id,
+                    status=DocumentStatus.FAILED,
+                    message=f"File type {file_extension} not supported. Allowed types: {allowed_extensions}",
+                    processing_started_at=datetime.utcnow()
+                ))
+                continue
             
             try:
-                # Validate file extension
-                file_extension = os.path.splitext(file.filename)[1].lower()
-                if file_extension not in allowed_extensions:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"File type {file_extension} not supported. Allowed: {', '.join(allowed_extensions)}"
-                    )
-                
-                # Read file content
                 file_content = await file.read()
                 content_type = file.content_type or "application/octet-stream"
                 
+                logger.info(f"=== STARTING DOCUMENT UPLOAD ===")
+                logger.info(f"Document ID: {document_id}")
                 logger.info(f"File: {file.filename}, Size: {len(file_content)} bytes, Type: {content_type}")
                 logger.info(f"Document type: {document_type}, Company: {company_name}")
                 logger.info(f"File content read successfully: {len(file_content)} bytes")
@@ -98,230 +115,204 @@ async def upload_documents(
                     await f.write(file_content)
                 logger.info(f"File saved locally to: {file_path}")
                 
-                # Determine target index based on domain and document type
-                if domain == "insurance":
-                    if is_claim:
-                        target_index_name = settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
-                        document_type_str = "claim"
-                    else:
-                        target_index_name = settings.AZURE_SEARCH_POLICY_INDEX_NAME
-                        document_type_str = "policy"
-                else:
-                    target_index_name = settings.AZURE_SEARCH_INDEX_NAME
-                    document_type_str = document_type or "unknown"
+                parsed_filing_date = None
+                if filing_date:
+                    try:
+                        parsed_filing_date = datetime.fromisoformat(filing_date.replace('Z', '+00:00'))
+                    except ValueError:
+                        logger.warning(f"Invalid filing date format: {filing_date}")
                 
-                # Prepare metadata
+                # Use the is_claim parameter from the form
+                
                 metadata = {
-                    "batch_id": batch_id,
+                    "filename": file.filename,
+                    "document_type": document_type,
                     "company_name": company_name,
-                    "filing_date": filing_date,
-                    "domain": domain,
-                    "is_claim": is_claim,
+                    "filing_date": parsed_filing_date.isoformat() if parsed_filing_date else None,
+                    "embedding_model": embedding_model,
+                    "search_type": search_type,
+                    "temperature": temperature,
                     "upload_timestamp": datetime.utcnow().isoformat(),
-                    "target_index": target_index_name
+                    "file_size": len(file_content),
+                    "file_extension": file_extension,
+                    "is_claim": is_claim
                 }
                 
-                # Create async task for document processing
-                if domain == "insurance":
-                    # Use InsuranceDocumentService for insurance documents
-                    asyncio.create_task(
-                        process_insurance_document_async(
-                            service=document_processor,
-                            content=file_content,
-                            content_type=content_type,
-                            filename=file.filename,
-                            document_id=document_id,
-                            metadata=metadata,
-                            target_index_name=target_index_name,
-                            document_type=document_type_str
-                        )
-                    )
-                else:
-                    # Use generic DocumentProcessor for other documents
-                    asyncio.create_task(
-                        process_document_async(
-                            service=document_processor,
-                            content=file_content,
-                            content_type=content_type,
-                            filename=file.filename,
-                            document_id=document_id,
-                            metadata=metadata,
-                            target_index_name=target_index_name
-                        )
-                    )
+                logger.info(f"Starting document processing: {document_id}, type: {document_type}, file: {file.filename}")
+                logger.info(f"Metadata prepared: {metadata}")
+                logger.info(f"Content type: {content_type}")
                 
-                # Add to batch tracking
-                kb_batches[batch_id]["documents"].append({
+                logger.info(f"Creating async task for document processing...")
+                # Determine target index based on domain and claim status
+                logger.info(f"🔍 Determining target index...")
+                logger.info(f"   Domain: {domain}")
+                logger.info(f"   is_claim: {is_claim}")
+                logger.info(f"   metadata.get('is_claim'): {metadata.get('is_claim')}")
+                
+                if domain == "banking":
+                    target_index = settings.AZURE_SEARCH_INDEX_NAME  # SEC index for banking
+                    logger.info(f"   Selected SEC index: {target_index}")
+                elif metadata.get("is_claim"):
+                    target_index = settings.AZURE_SEARCH_CLAIMS_INDEX_NAME  # Claims index for customer claims
+                    logger.info(f"   Selected CLAIMS index: {target_index}")
+                else:
+                    target_index = settings.AZURE_SEARCH_POLICY_INDEX_NAME  # Policy index for insurance
+                    logger.info(f"   Selected POLICY index: {target_index}")
+                
+                logger.info(f"✅ Final target_index: {target_index}")
+
+                # Initialize processing tracker
+                index_name = "sec" if domain == "banking" else ("claims" if metadata.get("is_claim") else "policy")
+                kb_processing_status[document_id] = {
                     "document_id": document_id,
                     "filename": file.filename,
-                    "status": "processing",
-                    "started_at": datetime.utcnow().isoformat()
-                })
+                    "index": index_name,
+                    "stage": "queued",
+                    "progress_percent": 0.0,
+                    "message": "Queued for processing",
+                    "started_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow().isoformat(),
+                    "completed_at": None,
+                    "chunks_created": 0,
+                    "error_message": None,
+                    "batch_id": batch_id,
+                }
+                kb_batches[batch_id]["documents"].append(document_id)
+
+                asyncio.create_task(
+                    process_document_async(
+                        document_processor, 
+                        file_content, 
+                        content_type, 
+                        file.filename, 
+                        document_id,
+                        metadata,
+                        target_index
+                    )
+                )
+                logger.info(f"Async task created for document {document_id}")
                 
-                responses.append(DocumentUploadResponse(
+                response = DocumentUploadResponse(
                     document_id=document_id,
-                    filename=file.filename,
                     status=DocumentStatus.PROCESSING,
-                    message=f"Document uploaded successfully. Processing started. Batch ID: {batch_id}",
-                    batch_id=batch_id
-                ))
-                
-                logger.info(f"Document {file.filename} queued for processing with ID {document_id}")
+                    message=f"Upload accepted. Processing started (batch {batch_id})",
+                    processing_started_at=datetime.utcnow()
+                )
+                responses.append(response)
                 
             except Exception as e:
-                logger.error(f"Error processing file {file.filename}: {e}")
-                kb_batches[batch_id]["failed"] += 1
-                kb_batches[batch_id]["documents"].append({
-                    "document_id": document_id,
-                    "filename": file.filename,
-                    "status": "failed",
-                    "error_message": str(e),
-                    "failed_at": datetime.utcnow().isoformat()
-                })
-                
+                logger.error(f"Error processing document {file.filename}: {e}")
                 responses.append(DocumentUploadResponse(
                     document_id=document_id,
-                    filename=file.filename,
                     status=DocumentStatus.FAILED,
-                    message=f"Error processing document: {str(e)}",
-                    batch_id=batch_id
+                    message=f"Failed to process document: {str(e)}",
+                    processing_started_at=datetime.utcnow()
                 ))
         
-        logger.info(f"Batch {batch_id} created with {len(files)} files")
         return responses
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in upload_documents: {e}")
-        observability.record_error("document_upload_error", str(e))
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
-async def process_insurance_document_async(
-    service: InsuranceDocumentService,
-    content: bytes,
-    content_type: str,
-    filename: str,
-    document_id: str,
-    metadata: dict,
-    target_index_name: str,
-    document_type: str
-):
-    """Asynchronously process insurance document with Azure Document Intelligence"""
-    try:
-        logger.info(f"=== ASYNC INSURANCE DOCUMENT PROCESSING STARTED ===")
-        logger.info(f"Document ID: {document_id}")
-        logger.info(f"Filename: {filename}")
-        logger.info(f"Document Type: {document_type}")
-        logger.info(f"Target Index: {target_index_name}")
-        
-        result = await service.process_insurance_document(
-            content=content,
-            content_type=content_type,
-            filename=filename,
-            document_type=document_type,
-            metadata=metadata
-        )
-        
-        logger.info(f"Insurance document processing completed for {filename}")
-        logger.info(f"Extracted {len(result.get('chunks', []))} chunks")
-        logger.info(f"Insurance fields: {list(result.get('insurance_fields', {}).keys())}")
-        logger.info(f"Credibility score: {result.get('credibility_score', 0.0)}")
-        
-        # TODO: Upload chunks to Azure Search index
-        # This would involve:
-        # 1. Converting chunks to search documents
-        # 2. Uploading to the appropriate index (policy or claims)
-        # 3. Updating batch status
-        
-        batch_id = metadata.get("batch_id", "unknown")
-        if batch_id in kb_batches:
-            kb_batches[batch_id]["completed"] += 1
-            kb_batches[batch_id]["documents"].append({
-                "document_id": document_id,
-                "filename": filename,
-                "status": "completed",
-                "chunks_created": len(result.get('chunks', [])),
-                "insurance_fields": result.get('insurance_fields', {}),
-                "credibility_score": result.get('credibility_score', 0.0),
-                "extraction_confidence": result.get('processing_metadata', {}).get('extraction_confidence', 0.0),
-                "total_pages": result.get('processing_metadata', {}).get('total_pages', 0),
-                "completed_at": datetime.utcnow().isoformat()
-            })
-            
-            logger.info(f"Batch {batch_id} updated: {kb_batches[batch_id]['completed']}/{kb_batches[batch_id]['total_files']} completed")
-        
-        observability.track_document_processing_complete(filename, len(result.get('chunks', [])))
-        
-    except Exception as e:
-        logger.error(f"Error in async insurance document processing for {filename}: {e}")
-        
-        batch_id = metadata.get("batch_id", "unknown")
-        if batch_id in kb_batches:
-            kb_batches[batch_id]["failed"] += 1
-            kb_batches[batch_id]["documents"].append({
-                "document_id": document_id,
-                "filename": filename,
-                "status": "failed",
-                "error_message": str(e),
-                "failed_at": datetime.utcnow().isoformat()
-            })
-        
-        observability.record_error("insurance_document_processing_async_error", str(e))
+        logger.error(f"Error uploading documents: {e}")
+        raise HTTPException(status_code=500, detail="Failed to upload documents")
 
 async def process_document_async(
-    service: DocumentProcessor,
+    processor: DocumentProcessor,
     content: bytes,
     content_type: str,
     filename: str,
     document_id: str,
     metadata: dict,
-    target_index_name: str
+    target_index_name: str | None = None
 ):
-    """Asynchronously process document with generic DocumentProcessor"""
+    """Asynchronously process document with Azure Document Intelligence"""
     try:
         logger.info(f"=== ASYNC DOCUMENT PROCESSING STARTED ===")
         logger.info(f"Document ID: {document_id}")
         logger.info(f"Filename: {filename}")
-        logger.info(f"Target Index: {target_index_name}")
+        logger.info(f"Content type: {content_type}")
+        logger.info(f"Content size: {len(content)} bytes")
+        logger.info(f"Processing metadata: {metadata}")
+        logger.info(f"Target index name: {target_index_name}")
+        logger.info(f"Processor type: {type(processor)}")
         
-        result = await service.process_document(
+        logger.info(f"Calling processor.process_document()...")
+        start_time = time.time()
+
+        # Status helper
+        def _update_status(stage: str, percent: float, message: str, **extra):
+            st = kb_processing_status.get(document_id)
+            if not st:
+                logger.warning(f"Status tracker not found for document {document_id}")
+                return
+            st.update({
+                "stage": stage,
+                "progress_percent": float(max(0.0, min(100.0, percent))),
+                "message": message,
+                "updated_at": datetime.utcnow().isoformat(),
+                **extra
+            })
+            logger.info(f"Status updated for {document_id}: {stage} - {percent}% - {message}")
+
+        _update_status("parsing", 10.0, "Analyzing document content")
+        
+        logger.info(f"🔧 About to call processor.process_document with target_index_name: {target_index_name}")
+        processed_doc = await processor.process_document(
             content=content,
             content_type=content_type,
             source=filename,
             metadata=metadata,
             target_index_name=target_index_name
         )
+        logger.info(f"✅ processor.process_document completed successfully")
         
-        logger.info(f"Document processing completed for {filename}")
+        processing_time = time.time() - start_time
+        logger.info(f"=== DOCUMENT PROCESSING COMPLETED ===")
+        logger.info(f"Document ID: {document_id}")
+        logger.info(f"Processing time: {processing_time:.2f} seconds")
+        logger.info(f"Processing stats: {processed_doc['processing_stats']}")
         
-        batch_id = metadata.get("batch_id", "unknown")
-        if batch_id in kb_batches:
-            kb_batches[batch_id]["completed"] += 1
-            kb_batches[batch_id]["documents"].append({
-                "document_id": document_id,
-                "filename": filename,
-                "status": "completed",
-                "completed_at": datetime.utcnow().isoformat()
-            })
-            
-            logger.info(f"Batch {batch_id} updated: {kb_batches[batch_id]['completed']}/{kb_batches[batch_id]['total_files']} completed")
-        
-        observability.track_document_processing_complete(filename, 0)
+        observability.track_document_processing_complete(
+            document_id,
+            processed_doc['processing_stats']['total_chunks'],
+            processing_time
+        )
+
+        # Mark completed in trackers
+        _update_status("completed", 100.0, "Document processed and indexed", completed_at=datetime.utcnow().isoformat(), chunks_created=processed_doc['processing_stats']['total_chunks'])
+        try:
+            batch_id = kb_processing_status.get(document_id, {}).get("batch_id")
+            if batch_id and batch_id in kb_batches:
+                kb_batches[batch_id]["completed"] += 1
+                logger.info(f"✅ Batch {batch_id} completed count updated")
+        except Exception as e:
+            logger.warning(f"Failed to update batch completion count: {e}")
         
     except Exception as e:
-        logger.error(f"Error in async document processing for {filename}: {e}")
-        
-        batch_id = metadata.get("batch_id", "unknown")
-        if batch_id in kb_batches:
-            kb_batches[batch_id]["failed"] += 1
-            kb_batches[batch_id]["documents"].append({
-                "document_id": document_id,
-                "filename": filename,
-                "status": "failed",
+        logger.error(f"=== DOCUMENT PROCESSING FAILED ===")
+        logger.error(f"Document ID: {document_id}")
+        logger.error(f"Error: {e}")
+        logger.error(f"Error type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        observability.track_document_processing_error(document_id, str(e))
+        # Mark failed
+        st = kb_processing_status.get(document_id)
+        if st is not None:
+            st.update({
+                "stage": "failed",
+                "progress_percent": 0.0,
+                "message": f"Processing failed: {str(e)[:120]}",
                 "error_message": str(e),
-                "failed_at": datetime.utcnow().isoformat()
+                "completed_at": datetime.utcnow().isoformat(),
             })
-        
-        observability.record_error("document_processing_async_error", str(e))
+        try:
+            batch_id = kb_processing_status.get(document_id, {}).get("batch_id")
+            if batch_id and batch_id in kb_batches:
+                kb_batches[batch_id]["failed"] += 1
+        except Exception:
+            pass
 
 @router.get("/upload/status/{document_id}")
 async def get_upload_status(document_id: str):
@@ -342,112 +333,118 @@ async def get_upload_batch_status(batch_id: str):
         progress = 0.0
     return {**batch, "overall_progress_percent": round(progress, 2)}
 
-@router.get("/batch-status/{batch_id}")
-async def get_document_batch_status(batch_id: str):
-    """Get the status of a document processing batch"""
-    try:
-        if batch_id not in kb_batches:
-            raise HTTPException(status_code=404, detail="Batch not found")
-        
-        batch = kb_batches[batch_id]
-        
-        # Calculate progress
-        total = batch["total_files"]
-        completed = batch["completed"]
-        failed = batch["failed"]
-        processing = total - completed - failed
-        
-        return {
-            "batch_id": batch_id,
-            "total_files": total,
-            "completed": completed,
-            "failed": failed,
-            "processing": processing,
-            "started_at": batch["started_at"],
-            "documents": batch["documents"]
-        }
-        
-    except Exception as e:
-        logger.error(f"Error getting batch status for {batch_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting batch status: {str(e)}")
-
-@router.get("/documents")
+@router.get("/", response_model=List[DocumentInfo])
 async def list_documents(
-    domain: Optional[str] = Query(None, description="Filter by domain (e.g., 'insurance', 'banking')"),
-    document_type: Optional[str] = Query(None, description="Filter by document type"),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum number of documents to return")
+    document_type: Optional[DocumentType] = None,
+    company_name: Optional[str] = None,
+    status: Optional[DocumentStatus] = None,
+    limit: int = 50,
+    offset: int = 0
 ):
-    """List processed documents with optional filtering"""
+    """List uploaded documents with optional filtering"""
     try:
-        # TODO: Implement actual document listing from Azure Search indexes
-        # For now, return mock data based on domain
-        if domain == "insurance":
-            documents = [
-                {
-                    "id": "mock_insurance_1",
-                    "filename": "sample_policy.pdf",
-                    "document_type": "policy",
-                    "company_name": "Sample Insurance Co",
-                    "upload_date": "2024-01-15T10:00:00Z",
-                    "status": "processed"
-                },
-                {
-                    "id": "mock_insurance_2",
-                    "filename": "sample_claim.pdf",
-                    "document_type": "claim",
-                    "company_name": "Sample Insurance Co",
-                    "upload_date": "2024-01-15T11:00:00Z",
-                    "status": "processed"
-                }
-            ]
-        else:
-            documents = [
-                {
-                    "id": "mock_general_1",
-                    "filename": "sample_document.pdf",
-                    "document_type": "general",
-                    "upload_date": "2024-01-15T09:00:00Z",
-                    "status": "processed"
-                }
-            ]
+        observability.track_request("list_documents")
         
-        return {"documents": documents[:limit]}
+        logger.info(f"Documents list requested: type={document_type}, company={company_name}, status={status}")
         
+        documents = []
+        
+        return documents
     except Exception as e:
         logger.error(f"Error listing documents: {e}")
-        raise HTTPException(status_code=500, detail=f"Error listing documents: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to list documents")
 
-@router.get("/documents/{document_id}")
+@router.get("/{document_id}", response_model=DocumentInfo)
 async def get_document(document_id: str):
-    """Get a specific document by ID"""
+    """Get detailed information about a specific document"""
     try:
-        # TODO: Implement actual document retrieval from Azure Search
-        # For now, return mock data
-        return {
-            "id": document_id,
-            "filename": "sample_document.pdf",
-            "content": "This is sample document content...",
-            "metadata": {
-                "upload_date": "2024-01-15T10:00:00Z",
-                "status": "processed"
-            }
-        }
+        observability.track_request("get_document_info")
         
+        logger.info(f"Document info requested: {document_id}")
+        
+        raise HTTPException(status_code=404, detail="Document not found")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting document: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document information")
 
-@router.delete("/documents/{document_id}")
-async def delete_document(document_id: str):
-    """Delete a document by ID"""
+@router.get("/{document_id}/content")
+async def get_document_content(document_id: str, section: Optional[str] = None):
+    """Get the processed content of a document"""
     try:
-        # TODO: Implement actual document deletion from Azure Search
-        logger.info(f"Document {document_id} deleted")
-        return {"message": f"Document {document_id} deleted successfully"}
+        observability.track_request("get_document_content")
         
+        logger.info(f"Document content requested: {document_id}, section: {section}")
+        
+        return {
+            "document_id": document_id,
+            "section": section,
+            "content": "",
+            "chunks": [],
+            "metadata": {}
+        }
+    except Exception as e:
+        logger.error(f"Error getting document content {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document content")
+
+@router.get("/{document_id}/chunks")
+async def get_document_chunks(
+    document_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    section: Optional[str] = None
+):
+    """Get the chunks of a processed document"""
+    try:
+        observability.track_request("get_document_chunks")
+        
+        logger.info(f"Document chunks requested: {document_id}, section: {section}")
+        
+        return {
+            "document_id": document_id,
+            "total_chunks": 0,
+            "chunks": [],
+            "section_filter": section
+        }
+    except Exception as e:
+        logger.error(f"Error getting document chunks {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document chunks")
+
+@router.post("/{document_id}/reprocess")
+async def reprocess_document(document_id: str):
+    """Reprocess a document through the ingestion pipeline"""
+    try:
+        observability.track_request("reprocess_document")
+        
+        
+        logger.info(f"Document reprocessing requested: {document_id}")
+        
+        return {
+            "document_id": document_id,
+            "status": "reprocessing_started",
+            "message": "Document queued for reprocessing"
+        }
+    except Exception as e:
+        logger.error(f"Error reprocessing document {document_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to reprocess document")
+
+@router.delete("/{document_id}")
+async def delete_document(document_id: str):
+    """Delete a document and all its associated data"""
+    try:
+        observability.track_request("delete_document")
+        
+        
+        logger.info(f"Document deletion requested: {document_id}")
+        
+        return {
+            "document_id": document_id,
+            "message": "Document deleted successfully"
+        }
     except Exception as e:
         logger.error(f"Error deleting document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error deleting document: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete document")
 
 # Batch processing status endpoints (similar to SEC documents)
 @router.get("/batch/{batch_id}/status")

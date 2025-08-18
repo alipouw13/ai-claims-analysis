@@ -1,473 +1,304 @@
-# Agentic RAG Financial Assistant - Architecture & Technical Deep Dive
+# MSFT Insurance – Agentic AI Claims Assistant
 
-## 🏗️ System Overview
+Production-ready claims assistant combining document ingestion, Azure AI Search-based RAG, multi-agent orchestration, Durable Functions, and MCP tools. Frontend provides three personas: Customer, Underwriter, Admin.
 
-The Agentic RAG Financial Assistant is a sophisticated, enterprise-grade financial document processing and analysis platform that leverages cutting-edge AI technologies to provide intelligent financial insights, automated document processing, and multi-agent orchestration for insurance and financial services.
+## Overview
 
-## 🎯 Business Value & Use Cases
+This repo implements a complete RAG Financial POC with three interconnected use cases:
 
-### Primary Use Cases
-- **Insurance Document Processing**: Automated policy and claims document analysis using Azure Document Intelligence
-- **Financial Document Analysis**: SEC filings, financial reports, and regulatory compliance documents
-- **Multi-Agent Orchestration**: Coordinated AI agents for complex financial analysis tasks
-- **Real-time Knowledge Management**: Adaptive knowledge base updates and credibility assessment
-- **Customer Self-Service**: Automated claims processing and policy information retrieval
+1. **Context-Aware Content Generation**: RAG-based content generation with source citation
+2. **Agentic Question Answering**: Multi-source information retrieval with credibility verification
+3. **Adaptive Knowledge Base Management**: Automated knowledge base updates and curation
 
-### Business Benefits
-- **Cost Reduction**: 70% reduction in manual document processing time
-- **Compliance**: Automated regulatory compliance checking and audit trails
-- **Customer Experience**: 24/7 self-service capabilities with intelligent responses
-- **Risk Management**: Automated risk assessment and fraud detection
-- **Scalability**: Handle thousands of documents simultaneously with Azure cloud infrastructure
+## Key Features
 
-## 🏛️ High-Level Architecture
+### 🧠 Adaptive Knowledge Base Management
+- **Multi-Domain Document Processing**: Support for banking (SEC documents), insurance policies, and claims documents
+- **Intelligent Index Routing**: Automatic routing to appropriate indexes based on document type and domain
+- **Information Acquisition**: Automated ingestion from multiple financial document sources
+- **Relevance Assessment**: AI-powered content evaluation and credibility scoring
+- **Knowledge Organization**: Hierarchical structuring with semantic relationships
+- **Conflict Resolution**: Intelligent handling of contradictory financial information
+- **Response Adaptation**: Dynamic updates based on new market data and reports
 
-```mermaid
-graph TB
-    subgraph "Frontend Layer"
-        UI[React TypeScript UI]
-        Admin[Admin Dashboard]
-        Customer[Customer Portal]
-        Analyst[Analyst Interface]
-    end
-    
-    subgraph "API Gateway"
-        FastAPI[FastAPI Backend]
-        MCP[MCP Server]
-        Auth[Authentication & RBAC]
-    end
-    
-    subgraph "AI Orchestration Layer"
-        Orchestrator[Multi-Agent Orchestrator]
-        SK[Semantic Kernel]
-        Agents[Specialized AI Agents]
-    end
-    
-    subgraph "Document Processing"
-        DI[Azure Document Intelligence]
-        Processor[Document Processor]
-        Chunker[Intelligent Chunking]
-        Vectorizer[Embedding Generation]
-    end
-    
-    subgraph "Data Layer"
-        AISearch[Azure AI Search]
-        CosmosDB[Azure Cosmos DB]
-        Storage[Azure Blob Storage]
-    end
-    
-    subgraph "AI Services"
-        OpenAI[Azure OpenAI]
-        Foundry[Azure AI Foundry]
-        Monitor[Azure Monitor]
-    end
-    
-    UI --> FastAPI
-    FastAPI --> Orchestrator
-    Orchestrator --> Agents
-    Agents --> Processor
-    Processor --> DI
-    Processor --> Vectorizer
-    Vectorizer --> AISearch
-    Processor --> CosmosDB
-    Orchestrator --> OpenAI
-    Orchestrator --> Foundry
-    FastAPI --> Monitor
-```
+### 📊 Advanced Observability & Evaluation
+- **Token Usage Tracking**: Real-time monitoring across all Azure OpenAI models
+- **Evaluation Framework**: Custom metrics for relevance, groundedness, coherence, and fluency
+- **Distributed Tracing**: OpenTelemetry integration for complete request tracking
+- **Admin Dashboard**: Comprehensive metrics visualization with real-time updates
+- **Cost Monitoring**: Detailed cost tracking and budget alerts
 
-## 🔍 Core Components Deep Dive
+### 🤖 Multi-Agent Orchestration
+- **Semantic Kernel Integration**: Coordinated agent workflows for document processing
+- **Domain-Specific Insurance Agents**: Auto, Life, Health, Dental, and General insurance specialists
+- **MCP (Model Context Protocol)**: Standardized agent communication patterns
+- **A2A (Agent-to-Agent)**: Inter-agent collaboration for complex financial analysis
+- **Financial Document Specialists**: Dedicated agents for 10-K/10-Q report analysis
+- **Parallel Agent Execution**: Multiple agents working simultaneously for faster processing
 
-### 1. Azure AI Search - Intelligent Document Retrieval
+### 🌐 Model Context Protocol (MCP) Integration
+- **Multiple Protocols**: Support for stdin/stdout, HTTP JSON-RPC, WebSocket, and Server-Sent Events
+- **Claude Compatibility**: Native integration with Claude Desktop and other MCP clients
+- **Streaming Support**: Real-time progress updates for long-running financial analysis
+- **Tool Discovery**: Automatic tool and resource discovery for external AI assistants
+- **External Client Support**: Easy integration with VS Code extensions, web apps, and custom clients
+- **Enhanced A2A Communication**: Advanced agent-to-agent communication patterns
 
-Azure AI Search serves as the intelligent search backbone, providing semantic search, vector search, and hybrid search capabilities across all financial documents.
+### 🔍 Hybrid Search & RAG Pipeline
+- **Multi-Index Search**: Support for policy, claims, and financial document indexes
+- **Vector Search**: Semantic similarity using Azure AI Search
+- **Keyword Search**: Traditional text matching for precise queries
+- **Hybrid Search**: Combined vector and keyword search with semantic ranking
+- **Citation Management**: Comprehensive source tracking and inline citations
+- **Financial Context**: Industry-specific prompt engineering and chunking strategies
 
-#### Architecture & Configuration
-```mermaid
-graph LR
-    subgraph "Search Indexes"
-        Policy[rag-policy<br/>Insurance Policies]
-        Claims[rag-claims<br/>Claims Documents]
-        SEC[sec-filings<br/>SEC Documents]
-        Financial[financial-documents<br/>General Financial]
-    end
-    
-    subgraph "Search Capabilities"
-        Semantic[Semantic Search<br/>Natural Language]
-        Vector[Vector Search<br/>AI Embeddings]
-        Hybrid[Hybrid Search<br/>Combined Results]
-        Filters[Faceted Search<br/>Document Types]
-    end
-    
-    subgraph "Vector Search Profile"
-        Profile[default-vector-profile<br/>HNSW Algorithm]
-        Dimensions[1536 Dimensions<br/>OpenAI Embeddings]
-        Distance[Cosine Similarity<br/>Optimized Retrieval]
-    end
-```
+### 🏢 Azure AI Foundry Integration
+- **Agent Deployment**: Native Azure AI Foundry agent deployment with tools
+- **Tool Integration**: Seamless integration of Azure AI Search, Bing Search, and Knowledge Base tools
+- **Connection Management**: Automatic creation and management of Azure service connections
+- **Agent Instructions**: Specialized instructions for different agent types and domains
+- **Deployment Orchestration**: Automated deployment process with health monitoring
 
-#### Key Features
-- **Multi-Index Architecture**: Separate indexes for different document types (policies, claims, SEC filings)
-- **Vector Search**: 1536-dimensional embeddings using OpenAI's text-embedding-ada-002 model
-- **Semantic Search**: Natural language understanding with Microsoft's en.microsoft analyzer
-- **Hybrid Search**: Combines vector similarity with traditional keyword search
-- **Real-time Updates**: Automatic index updates as new documents are processed
+## Architecture
 
-#### Business Value
-- **Intelligent Retrieval**: Find relevant documents even with imprecise queries
-- **Context Awareness**: Understand financial terminology and industry context
-- **Performance**: Sub-second response times for complex financial queries
-- **Scalability**: Handle millions of documents with consistent performance
+### Backend Services (Python 3.11)
+- **FastAPI**: RESTful API with automatic OpenAPI documentation
+- **Azure AI Search**: Vector store with hybrid search and semantic ranking across multiple indexes
+- **Azure OpenAI**: GPT-4, GPT-4-Turbo, and embedding models
+- **Azure Cosmos DB**: Session history and evaluation results storage
+- **Azure Document Intelligence**: Advanced document processing and extraction
+- **Azure AI Foundry**: Project-based AI model deployment and management
+- **Semantic Kernel**: Multi-agent orchestration framework
+- **Multi-Agent Orchestrator**: Domain-specific agent coordination and parallel execution
 
-### 2. Azure Cosmos DB - Multi-Model Data Management
+### Frontend Application
+- **React + TypeScript**: Modern, responsive web interface
+- **Vite**: Fast development server and optimized builds
+- **ChatGPT-like UI**: Intuitive chat interface inspired by open-webui
+- **Admin Dashboard**: Real-time observability metrics and system monitoring
+- **Citation Preview**: Interactive document source navigation
+- **Multi-Domain Support**: Banking, insurance, and claims interfaces
 
-Cosmos DB provides a globally distributed, multi-model database that stores chat sessions, evaluation results, token usage, and document metadata.
+## Quick Start
 
-#### Data Model Architecture
-```mermaid
-graph TB
-    subgraph "Cosmos DB Containers"
-        ChatSessions[chat-sessions<br/>User Conversations]
-        Evaluations[evaluation-results<br/>AI Performance Metrics]
-        TokenUsage[token-usage<br/>Cost Tracking]
-        Documents[document-metadata<br/>Processing History]
-    end
-    
-    subgraph "Data Types"
-        JSON[Structured JSON<br/>Chat Sessions]
-        TimeSeries[Time Series<br/>Token Usage]
-        Documents[Document Objects<br/>Metadata & Status]
-        Analytics[Analytics Data<br/>Performance Metrics]
-    end
-    
-    subgraph "Global Distribution"
-        Regions[Multi-Region<br/>Low Latency]
-        Consistency[Session Consistency<br/>Real-time Updates]
-        Partitioning[Automatic Partitioning<br/>Scalability]
-    end
-```
+### Prerequisites
+- Python 3.11+
+- Node.js 18+ with npm/yarn/pnpm
+- Azure subscription with AI services
+- Docker (optional, for containerized deployment)
 
-#### Key Features
-- **Multi-Model Support**: JSON documents, time-series data, and graph relationships
-- **Global Distribution**: Low-latency access from anywhere in the world
-- **Automatic Scaling**: Handles varying workloads automatically
-- **Consistency Levels**: Configurable consistency for different use cases
-- **Real-time Analytics**: Built-in analytics and monitoring
-
-#### Business Value
-- **Global Accessibility**: Serve customers worldwide with consistent performance
-- **Cost Optimization**: Pay-per-use pricing with automatic scaling
-- **Compliance**: Built-in security and compliance features
-- **Real-time Insights**: Immediate access to conversation history and analytics
-
-### 3. Azure AI Foundry - Enterprise AI Platform
-
-Azure AI Foundry provides the enterprise-grade AI infrastructure for model deployment, monitoring, and governance across the entire AI lifecycle.
-
-#### AI Foundry Architecture
-```mermaid
-graph TB
-    subgraph "AI Foundry Components"
-        Projects[AI Projects<br/>Model Management]
-        Models[Model Registry<br/>Version Control]
-        Deployments[Model Deployments<br/>Scaling & Updates]
-        Monitoring[Performance Monitoring<br/>Drift Detection]
-    end
-    
-    subgraph "Integration Points"
-        OpenAI[Azure OpenAI<br/>GPT Models]
-        Custom[Custom Models<br/>Fine-tuned Models]
-        Evaluation[Evaluation Framework<br/>Performance Metrics]
-        Tracing[Distributed Tracing<br/>Request Flow]
-    end
-    
-    subgraph "Governance"
-        Security[Security & Compliance<br/>Access Control]
-        Audit[Audit Logging<br/>Change Tracking]
-        Policy[Policy Enforcement<br/>Resource Limits]
-    end
-```
-
-#### Key Features
-- **Model Lifecycle Management**: Complete model development to deployment pipeline
-- **Performance Monitoring**: Real-time model performance and drift detection
-- **Security & Compliance**: Enterprise-grade security with role-based access control
-- **Distributed Tracing**: End-to-end request flow visibility
-- **Evaluation Framework**: Automated model performance assessment
-
-#### Business Value
-- **Model Governance**: Centralized control over AI model deployments
-- **Performance Optimization**: Continuous monitoring and improvement of AI models
-- **Compliance**: Audit trails and governance for regulatory requirements
-- **Cost Management**: Optimized resource allocation and usage tracking
-
-## 🔄 Data Flow & Processing Pipeline
-
-### Document Processing Flow
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend
-    participant API
-    participant Processor
-    participant DI
-    participant Vectorizer
-    participant Search
-    participant Cosmos
-    
-    User->>Frontend: Upload Document
-    Frontend->>API: POST /documents/upload
-    API->>Processor: Process Document
-    Processor->>DI: Extract Content
-    DI-->>Processor: Structured Data
-    Processor->>Vectorizer: Generate Embeddings
-    Vectorizer-->>Processor: Vector Embeddings
-    Processor->>Search: Index Document
-    Processor->>Cosmos: Store Metadata
-    API-->>Frontend: Processing Complete
-    Frontend-->>User: Document Available
-```
-
-### Multi-Agent Orchestration Flow
-```mermaid
-sequenceDiagram
-    participant User
-    participant Orchestrator
-    participant Agents
-    participant Knowledge
-    participant Search
-    participant OpenAI
-    
-    User->>Orchestrator: Complex Query
-    Orchestrator->>Agents: Route to Specialists
-    Agents->>Knowledge: Retrieve Context
-    Knowledge->>Search: Vector Search
-    Search-->>Knowledge: Relevant Documents
-    Agents->>OpenAI: Generate Response
-    OpenAI-->>Agents: AI Response
-    Orchestrator->>User: Coordinated Answer
-```
-
-## 🧠 AI Agent Architecture
-
-### Agent Types & Capabilities
-```mermaid
-graph TB
-    subgraph "Specialized Agents"
-        ContentGen[Content Generator Agent<br/>Financial Reports & Analysis]
-        QA[QA Agent<br/>Question Answering]
-        Knowledge[Knowledge Manager<br/>Information Organization]
-        Risk[Risk Calculation Agent<br/>Claims Assessment]
-        Insurance[Insurance Agent<br/>Policy & Claims Processing]
-    end
-    
-    subgraph "Agent Capabilities"
-        SK[Semantic Kernel<br/>AI Orchestration]
-        Tools[Tool Integration<br/>External APIs]
-        Memory[Conversation Memory<br/>Context Awareness]
-        Learning[Adaptive Learning<br/>Performance Improvement]
-    end
-    
-    subgraph "Orchestration"
-        Coordinator[Agent Coordinator<br/>Task Distribution]
-        Workflow[Workflow Engine<br/>Process Management]
-        Monitoring[Performance Monitoring<br/>Quality Assurance]
-    end
-```
-
-### Agent Communication Patterns
-- **Request Routing**: Intelligent routing based on query complexity and agent expertise
-- **Context Sharing**: Shared context and memory across agent interactions
-- **Tool Integration**: Seamless integration with external services and APIs
-- **Learning & Adaptation**: Continuous improvement based on user feedback and performance metrics
-
-## 🔐 Security & Compliance
-
-### Security Architecture
-```mermaid
-graph TB
-    subgraph "Authentication & Authorization"
-        AzureAD[Azure Active Directory]
-        RBAC[Role-Based Access Control]
-        API[API Key Management]
-        MCP[MCP Server Security]
-    end
-    
-    subgraph "Data Protection"
-        Encryption[Data Encryption<br/>At Rest & In Transit]
-        KeyVault[Azure Key Vault<br/>Secret Management]
-        Compliance[Regulatory Compliance<br/>GDPR, SOX, HIPAA]
-        Audit[Audit Logging<br/>Complete Trail]
-    end
-    
-    subgraph "Network Security"
-        VNet[Virtual Network<br/>Isolation]
-        NSG[Network Security Groups]
-        Firewall[Azure Firewall]
-        DDoS[DDoS Protection]
-    end
-```
-
-### Compliance Features
-- **Data Residency**: Control over data location and storage
-- **Audit Trails**: Complete logging of all system activities
-- **Access Control**: Granular permissions based on user roles
-- **Encryption**: End-to-end encryption for sensitive financial data
-
-## 📊 Performance & Scalability
-
-### Performance Characteristics
-- **Response Time**: Sub-second response for document queries
-- **Throughput**: Handle thousands of concurrent users
-- **Document Processing**: Process 100+ documents simultaneously
-- **Vector Search**: 99.9% accuracy for semantic similarity
-
-### Scalability Features
-- **Auto-scaling**: Automatic resource allocation based on demand
-- **Load Balancing**: Distributed processing across multiple instances
-- **Caching**: Intelligent caching for frequently accessed data
-- **CDN Integration**: Global content delivery for optimal performance
-
-## 🚀 Deployment & Operations
-
-### Deployment Architecture
-```mermaid
-graph TB
-    subgraph "Development"
-        Local[Local Development]
-        Testing[Testing Environment]
-        Staging[Staging Environment]
-    end
-    
-    subgraph "Production"
-        Production[Production Environment]
-        Monitoring[Azure Monitor]
-        Logs[Application Insights]
-        Alerts[Alert Management]
-    end
-    
-    subgraph "CI/CD"
-        GitHub[GitHub Actions]
-        Docker[Docker Containers]
-        Azure[Azure Container Registry]
-        AKS[Azure Kubernetes Service]
-    end
-```
-
-### Operational Features
-- **Health Monitoring**: Real-time system health and performance metrics
-- **Automated Scaling**: Automatic scaling based on demand and performance
-- **Backup & Recovery**: Automated backup and disaster recovery
-- **Update Management**: Seamless updates with zero-downtime deployment
-
-## 🔧 Configuration & Environment
-
-### Environment Variables
+### 1. Backend Setup
 ```bash
-# Azure AI Search
-AZURE_SEARCH_SERVICE_NAME=your-search-service
-AZURE_SEARCH_POLICY_INDEX_NAME=rag-policy
-AZURE_SEARCH_CLAIMS_INDEX_NAME=rag-claims
-
-# Azure OpenAI
-AZURE_OPENAI_ENDPOINT=your-openai-endpoint
-AZURE_OPENAI_API_KEY=your-api-key
-
-# Azure Cosmos DB
-AZURE_COSMOS_ENDPOINT=your-cosmos-endpoint
-AZURE_COSMOS_DATABASE_NAME=rag-financial-db
-
-# Azure AI Foundry
-AZURE_AI_FOUNDRY_PROJECT_NAME=your-project
-AZURE_AI_FOUNDRY_WORKSPACE_NAME=your-workspace
+cd backend
+pip install -r requirements.txt
+cp .env.example .env
+# Configure Azure services in .env file
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Configuration Management
-- **Environment-based**: Different configurations for dev, staging, and production
-- **Secret Management**: Secure storage of sensitive configuration values
-- **Validation**: Automatic validation of configuration values at startup
-- **Hot Reloading**: Configuration updates without service restart
-
-## 📈 Monitoring & Observability
-
-### Monitoring Stack
-```mermaid
-graph TB
-    subgraph "Application Monitoring"
-        AppInsights[Application Insights]
-        CustomMetrics[Custom Metrics]
-        UserBehavior[User Behavior Analytics]
-    end
-    
-    subgraph "Infrastructure Monitoring"
-        AzureMonitor[Azure Monitor]
-        LogAnalytics[Log Analytics]
-        Metrics[Performance Metrics]
-    end
-    
-    subgraph "AI Model Monitoring"
-        ModelPerformance[Model Performance]
-        DriftDetection[Drift Detection]
-        BiasMonitoring[Bias Monitoring]
-    end
+### 2. Frontend Setup
+```bash
+cd frontend
+npm install
+cp .env.example .env
+# Configure API endpoints in .env file
+npm run dev
 ```
 
-### Key Metrics
-- **Response Time**: API response times and latency
-- **Throughput**: Requests per second and concurrent users
-- **Error Rates**: Error frequencies and types
-- **Resource Usage**: CPU, memory, and storage utilization
-- **AI Model Performance**: Accuracy, latency, and drift metrics
+### 3. Access the Application
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
+- **Admin Dashboard**: http://localhost:5173 (Admin tab)
 
-## 🧪 Testing & Quality Assurance
+## Configuration
 
-### Testing Strategy
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: Service interaction testing
-- **End-to-End Tests**: Complete workflow testing
-- **Performance Tests**: Load and stress testing
-- **Security Tests**: Vulnerability and penetration testing
+### Multi-Domain Document Processing
 
-### Quality Gates
-- **Code Coverage**: Minimum 80% code coverage requirement
-- **Performance Benchmarks**: Response time and throughput requirements
-- **Security Scanning**: Automated security vulnerability scanning
-- **Compliance Checks**: Regulatory compliance validation
+The system now supports multiple domains with intelligent index routing:
 
-## 🔮 Future Roadmap
+| Domain | Document Types | Target Index | Use Case |
+|--------|---------------|--------------|----------|
+| **Banking** | SEC filings (10-K, 10-Q, 8-K) | `financial-documents` | Financial analysis and reporting |
+| **Insurance** | Policy documents | `policy-documents` | Policy analysis and management |
+| **Claims** | Claim forms and reports | `claims-documents` | Claims processing and assessment |
 
-### Planned Enhancements
-- **Advanced AI Models**: Integration with next-generation language models
-- **Real-time Streaming**: Live document processing and analysis
-- **Multi-language Support**: Support for multiple languages and regions
-- **Advanced Analytics**: Predictive analytics and trend analysis
-- **Mobile Applications**: Native mobile applications for iOS and Android
+### Verification Level Features
 
-### Technology Evolution
-- **Quantum Computing**: Integration with quantum computing for complex financial modeling
-- **Edge Computing**: Distributed processing for improved performance
-- **Blockchain Integration**: Secure and transparent financial transactions
-- **IoT Integration**: Real-time data from connected financial devices
+The QA system supports three distinct verification levels with different performance and thoroughness characteristics:
 
-## 📚 Additional Resources
+| Feature | Basic | Thorough | Comprehensive |
+|---------|-------|-----------|---------------|
+| **Source Documents** | 5 | 10 | 15 |
+| **Content Length** | 800 chars | 1200 chars | 1600 chars |
+| **Response Time** | Fastest | Standard | Thorough |
+| **Question Decomposition** | ❌ | ❌ | ✅ |
+| **Source Verification** | Basic | ✅ | ✅ |
+| **Cross-referencing** | ❌ | ✅ | ✅ |
+| **Conflict Analysis** | ❌ | ✅ | ✅ |
+| **Limitation Analysis** | ❌ | ❌ | ✅ |
+| **Sub-question Analysis** | ❌ | ❌ | ✅ |
+| **Use Case** | Quick answers | Standard analysis | Complex investigation |
 
-### Documentation
-- [Azure AI Search Documentation](https://docs.microsoft.com/azure/search/)
-- [Azure Cosmos DB Documentation](https://docs.microsoft.com/azure/cosmos-db/)
-- [Azure AI Foundry Documentation](https://docs.microsoft.com/azure/ai-foundry/)
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+**Basic Verification**: Speed-optimized for simple questions requiring quick answers with essential information and citations.
 
-### Code Examples
-- [Sample API Calls](docs/api-examples.md)
-- [Agent Development Guide](docs/agent-development.md)
-- [Deployment Guide](docs/deployment.md)
-- [Troubleshooting Guide](docs/troubleshooting.md)
+**Thorough Verification**: Balanced approach with comprehensive analysis, source verification, and conflict identification for standard financial research.
 
-### Support & Community
-- [GitHub Issues](https://github.com/your-repo/issues)
-- [Discord Community](https://discord.gg/your-community)
-- [Documentation Wiki](https://github.com/your-repo/wiki)
-- [Contributing Guidelines](CONTRIBUTING.md)
+**Comprehensive Verification**: Exhaustive deep analysis with question decomposition, multi-angle investigation, and detailed limitation analysis for complex financial questions.
 
----
+### Azure Services Setup
+1. **Azure AI Foundry**: Create project with Foundry Project approach
+2. **Azure OpenAI**: Deploy GPT-4, GPT-4-Turbo, and embedding models
+3. **Azure AI Search**: Configure with vector search and semantic ranking across multiple indexes
+4. **Azure Cosmos DB**: Set up containers for sessions and evaluations
+5. **Azure Document Intelligence**: Enable for financial document processing
+6. **Azure Application Insights**: Configure for observability and tracing
 
-*This architecture represents a state-of-the-art financial AI platform that combines the power of Azure cloud services with advanced AI orchestration to deliver enterprise-grade financial document processing and analysis capabilities.*
+### Environment Configuration
+See detailed configuration in:
+- `backend/.env.example` - Backend Azure services and API settings
+- `frontend/.env.example` - Frontend configuration and feature flags
+- `azure-deployment-config.json` - Complete Azure resource definitions
+
+## API Documentation
+
+The FastAPI backend provides comprehensive API documentation:
+- **Interactive Swagger UI**: http://localhost:8000/docs
+- **ReDoc Documentation**: http://localhost:8000/redoc
+- **OpenAPI Schema**: http://localhost:8000/openapi.json
+
+## Multi-Domain Document Processing
+
+### Supported Document Types
+
+#### Banking Domain (SEC Documents)
+- **10-K Annual Reports**: Complete financial statements and analysis
+- **10-Q Quarterly Reports**: Quarterly financial updates
+- **8-K Current Reports**: Material events and corporate changes
+- **Proxy Statements**: Governance and executive compensation
+- **Earnings Transcripts**: Quarterly earnings call transcripts
+
+#### Insurance Domain
+- **Policy Documents**: Auto, life, health, and dental insurance policies
+- **Endorsements**: Policy modifications and updates
+- **Rate Schedules**: Premium calculations and pricing
+- **Underwriting Guidelines**: Risk assessment criteria
+
+#### Claims Domain
+- **Claim Forms**: Customer claim submissions
+- **Damage Reports**: Property and vehicle damage assessments
+- **Medical Reports**: Health and dental claim documentation
+- **Investigation Reports**: Claims investigation findings
+
+### Intelligent Index Routing
+
+The system automatically routes documents to appropriate indexes based on:
+- **Domain Classification**: Banking, insurance, or claims
+- **Document Type**: Policy, claim, or financial document
+- **Content Analysis**: AI-powered document classification
+- **Metadata Extraction**: Automatic metadata enrichment
+
+### Chunking Strategy
+- **Hierarchical Chunking**: Section-aware document segmentation
+- **Domain-Specific Context**: Industry-specific chunk boundaries
+- **Overlap Management**: Intelligent chunk overlap for context preservation
+- **Metadata Enrichment**: Document type, section, and page number tracking
+
+## Observability & Monitoring
+
+### Metrics Tracked
+- **Token Usage**: By model, user, and session
+- **Response Times**: API endpoint performance
+- **Evaluation Scores**: Relevance, groundedness, coherence
+- **System Resources**: CPU, memory, and storage utilization
+- **Error Rates**: Failed requests and error categorization
+- **Agent Performance**: Individual agent metrics and health
+
+### Distributed Tracing
+- **OpenTelemetry**: Complete request tracing across services
+- **Azure Application Insights**: Centralized logging and monitoring
+- **Custom Spans**: Financial document processing workflows
+- **Performance Profiling**: Bottleneck identification and optimization
+
+## Model Context Protocol (MCP) Server
+
+The system includes a comprehensive MCP server that can be used by Claude, VS Code extensions, and other MCP-compatible clients.
+
+### 🚀 MCP Server Features
+
+- **Multiple Protocols**: Support for stdin/stdout, HTTP, WebSocket, and SSE
+- **Streaming Responses**: Real-time progress updates for long-running operations
+- **Tool Discovery**: Automatic discovery of available financial analysis tools
+- **Claude Desktop Integration**: Native support for Claude Desktop app
+- **External Client Support**: REST API for web applications and services
+- **Enhanced A2A Communication**: Advanced agent-to-agent communication patterns
+
+### Quick MCP Setup
+
+#### For Claude Desktop
+```json
+{
+  "mcpServers": {
+    "financial-rag": {
+      "command": "python",
+      "args": ["path/to/agenticrag/mcp_server/main.py"],
+      "env": {
+        "PYTHONPATH": "path/to/agenticrag"
+      }
+    }
+  }
+}
+```
+
+#### For HTTP Clients (Web Apps, VS Code)
+```bash
+cd mcp_server
+python streaming_mcp_server.py --mode http --port 8000
+```
+
+### Durable Functions Orchestration
+
+Use the Durable Functions reference from "Durable-Functions-For-Agentic-Workflows". Deploy an orchestrator named `agent_orchestrator` with activities:
+- `ingest_document`: Document Intelligence → chunk → embed → Azure AI Search index
+- `answer_question`: Hybrid search → agent reasoning → citations → optional AI Foundry evals
+
+This repo includes:
+- `backend/app/services/durable_client.py`: minimal durable client
+- `backend/app/api/routes/workflows.py`: endpoints to start and monitor instances
+
+Set `DURABLE_FUNCTIONS_BASE_URL` and optionally `DURABLE_FUNCTIONS_API_KEY`.
+
+### Available MCP Tools
+
+1. **answer_financial_question** - Comprehensive Q&A with RAG (streaming supported)
+2. **search_financial_documents** - Knowledge base search (streaming supported)
+3. **verify_source_credibility** - Source reliability assessment
+4. **coordinate_multi_agent_analysis** - Multi-agent coordination (streaming supported)
+5. **get_knowledge_base_stats** - System health and statistics
+6. **deploy_insurance_agent** - Deploy domain-specific insurance agents
+7. **process_insurance_claim** - Process insurance claims with specialized agents
+
+See [mcp_server/README.md](./mcp_server/README.md) for complete documentation.
+
+## Agent System
+
+The system includes a sophisticated multi-agent orchestration system with domain-specific agents. See [AGENTS_README.md](./AGENTS_README.md) for comprehensive documentation.
+
+### Key Agent Features
+- **Domain-Specific Agents**: Auto, Life, Health, Dental, and General insurance specialists
+- **Parallel Execution**: Multiple agents working simultaneously
+- **Semantic Kernel Integration**: Advanced orchestration and planning
+- **Tool Integration**: Azure AI Search, Bing Search, and Knowledge Base tools
+- **Azure AI Foundry Deployment**: Native deployment with integrated tools
+
+## Support & Documentation
+
+- **Azure AI Foundry**: https://learn.microsoft.com/en-us/azure/ai-foundry/
+- **Semantic Kernel**: https://learn.microsoft.com/en-us/semantic-kernel/
+- **Azure OpenAI**: https://learn.microsoft.com/en-us/azure/ai-services/openai/
+- **FastAPI Documentation**: https://fastapi.tiangolo.com/
+- **React Documentation**: https://react.dev/
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

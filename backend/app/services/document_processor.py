@@ -82,7 +82,7 @@ class DocumentProcessor:
             extracted_content = {}
             use_local = False
             try:
-                if self.azure_manager and getattr(self.azure_manager, 'form_recognizer_client', None) and settings.AZURE_FORM_RECOGNIZER_ENDPOINT.startswith("https://"):
+                if self.azure_manager and getattr(self.azure_manager, 'form_recognizer_client', None) and settings.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT.startswith("https://"):
                     extracted_content = await self.azure_manager.analyze_document(content, content_type)
                 else:
                     use_local = True

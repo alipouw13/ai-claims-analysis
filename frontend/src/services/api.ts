@@ -467,7 +467,7 @@ class ApiService {
     finished_at?: string;
     status: string; // "processing", "completed", "failed"
   }> {
-    return this.makeRequest(`/documents/batch/${batchId}/status`);
+    return this.makeRequest(`/batch/${batchId}/status`);
   }
 
   async getDocumentExtractedData(documentId: string): Promise<{
