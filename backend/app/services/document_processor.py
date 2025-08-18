@@ -56,7 +56,8 @@ class DocumentProcessor:
         
     async def process_document(self, content: bytes, content_type: str, 
                              source: str, metadata: Dict = None, 
-                             target_index_name: Optional[str] = None) -> Dict:
+                             target_index_name: Optional[str] = None,
+                             document_id: Optional[str] = None) -> Dict:
         """
         Enhanced document processing pipeline for financial documents
         
@@ -93,9 +94,15 @@ class DocumentProcessor:
                 extracted_content = {"content": text, "tables": [], "key_value_pairs": {}, "pages": 0}
             logger.info(f"Step 1 COMPLETE: Content length: {len(extracted_content.get('content', ''))}")
             
-            logger.info(f"Step 2: Generating document ID...")
-            document_id = self._generate_document_id(source, extracted_content["content"])
-            logger.info(f"Step 2 COMPLETE: Document ID generated: {document_id}")
+            logger.info(f"Step 2: Generating or using document ID...")
+            # Use the document_id passed from the upload API if provided, otherwise generate one
+            # This ensures consistency between the upload tracking and the search index
+            if not document_id:
+                document_id = self._generate_document_id(source, extracted_content["content"])
+                logger.info(f"Generated new document ID: {document_id}")
+            else:
+                logger.info(f"Using provided document ID: {document_id}")
+            logger.info(f"Step 2 COMPLETE: Final document ID: {document_id}")
             
             logger.info(f"Step 3: Extracting financial info...")
             financial_info = await self._extract_comprehensive_financial_info(
@@ -135,6 +142,12 @@ class DocumentProcessor:
             embedding_model = metadata.get("embedding_model") if metadata else None
             logger.info(f"Using embedding model: {embedding_model or 'default from settings'}")
             
+            # Clean up embedding model name if it contains extra text
+            if embedding_model and "(" in embedding_model:
+                # Extract just the model name from "text-embedding-3-small (text-embedding-3-small)"
+                embedding_model = embedding_model.split("(")[0].strip()
+                logger.info(f"Cleaned embedding model name to: {embedding_model}")
+            
             for i, chunk in enumerate(chunks):
                 if i % 5 == 0:  # Log every 5th chunk to avoid spam
                     logger.info(f"Generating embedding for chunk {i+1}/{len(chunks)}")
@@ -160,75 +173,14 @@ class DocumentProcessor:
             # Convert chunks to search index format and add to knowledge base
             search_documents = []
             for chunk in chunks:
-                # If targeting a specific policy index schema, adapt field names
-                if target_index_name and target_index_name in {
-                    getattr(settings, 'AZURE_SEARCH_POLICY_INDEX_NAME', None),
-                    getattr(settings, 'AZURE_SEARCH_CLAIMS_INDEX_NAME', None),
-                }:
-                    # Use the correct schema for existing policy/claims indexes
-                    search_doc = {
-                        "chunk_id": f"{document_id}_{chunk.chunk_id}",
-                        "parent_id": document_id,
-                        "chunk": chunk.content,
-                        "title": chunk.metadata.get("title", source),
-                        "text_vector": chunk.embedding,
-                    }
-                    
-                    search_documents.append(search_doc)
-                    continue
-
-                # Default schema for generic/SEC or claims
+                # Use the correct schema for all indexes - using Content Processing Solution Accelerator pattern
                 search_doc = {
                     "id": f"{document_id}_{chunk.chunk_id}",
+                    "parent_id": document_id,
                     "content": chunk.content,
                     "title": chunk.metadata.get("title", source),
-                    "document_id": document_id,
-                    "source": source,
-                    "chunk_id": chunk.chunk_id,
-                    # Normalize type/section for policy vs claims vs SEC
-                    "document_type": chunk.metadata.get(
-                        "document_type",
-                        ("claim" if (metadata or {}).get("is_claim") else "policy")
-                    ),
-                    "company": chunk.metadata.get("company_name", ""),
-                    "filing_date": chunk.metadata.get("filing_date", ""),
-                    "section_type": chunk.metadata.get(
-                        "section_type",
-                        ("claim" if (metadata or {}).get("is_claim") else "policy")
-                    ),
-                    "page_number": chunk.metadata.get("page_number", 1),
                     "content_vector": chunk.embedding,
-                    "credibility_score": chunk.metadata.get("credibility_score", 0.8),
-                    "confidence_score": chunk.metadata.get("confidence_score", 0.7),
-                    "processed_at": datetime.utcnow().isoformat(),
-                    "citation_info": json.dumps(chunk.citation_info or {})
                 }
-                # Enrich with domain-specific fields
-                if (metadata or {}).get("is_claim"):
-                    search_doc.update({
-                        "claim_id": (metadata or {}).get("claim_id"),
-                        "policy_number": (metadata or {}).get("policy_number"),
-                        "insured_name": (metadata or {}).get("insured_name"),
-                        "date_of_loss": (metadata or {}).get("date_of_loss"),
-                        "loss_cause": (metadata or {}).get("loss_cause"),
-                        "location": (metadata or {}).get("location"),
-                        "coverage_decision": (metadata or {}).get("coverage_decision"),
-                        "settlement_summary": (metadata or {}).get("settlement_summary"),
-                        "payout_amount": (metadata or {}).get("payout_amount"),
-                    })
-                else:
-                    search_doc.update({
-                        "policy_number": (metadata or {}).get("policy_number"),
-                        "insured_name": (metadata or {}).get("insured_name"),
-                        "line_of_business": (metadata or {}).get("line_of_business"),
-                        "state": (metadata or {}).get("state"),
-                        "effective_date": (metadata or {}).get("effective_date"),
-                        "expiration_date": (metadata or {}).get("expiration_date"),
-                        "deductible": (metadata or {}).get("deductible"),
-                        "coverage_limits": (metadata or {}).get("coverage_limits"),
-                        "exclusions": (metadata or {}).get("exclusions"),
-                        "endorsements": (metadata or {}).get("endorsements"),
-                    })
                 search_documents.append(search_doc)
             logger.info(f"Step 7 COMPLETE: Prepared {len(search_documents)} search documents")
             
@@ -1161,6 +1113,85 @@ class DocumentProcessor:
             logger.error(f"Error extracting financial metrics: {e}")
         
         return metrics[:100]  # Limit to first 100 metrics
+
+    async def _create_basic_chunks(self, content: str, document_id: str, metadata: Dict) -> List[DocumentChunk]:
+        """
+        Create basic text chunks as fallback when domain-specific chunking fails
+        """
+        logger.info(f"Creating basic chunks for document {document_id}")
+        chunks = []
+        
+        # Simple text splitting approach
+        max_chunk_size = 1500
+        overlap = 200
+        
+        # Split text into sentences first
+        sentences = re.split(r'[.!?]+', content)
+        
+        current_chunk = ""
+        chunk_index = 0
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+                
+            # If adding this sentence would exceed chunk size
+            if len(current_chunk) + len(sentence) > max_chunk_size and current_chunk:
+                # Create chunk
+                chunk = DocumentChunk(
+                    chunk_id=f"{document_id}_chunk_{chunk_index}",
+                    content=current_chunk.strip(),
+                    metadata={
+                        **metadata,
+                        "chunk_index": chunk_index,
+                        "section_type": "general",
+                        "page_number": max(1, chunk_index // 3 + 1),  # Rough page estimation
+                        "content_type": "text",
+                        "chunk_type": "basic"
+                    },
+                    citation_info={
+                        "page_number": max(1, chunk_index // 3 + 1),
+                        "section_type": "general",
+                        "document_type": metadata.get("document_type", "financial"),
+                        "company": metadata.get("company_name", ""),
+                    }
+                )
+                chunks.append(chunk)
+                
+                # Start new chunk with overlap
+                if len(current_chunk) > overlap:
+                    current_chunk = current_chunk[-overlap:] + " " + sentence
+                else:
+                    current_chunk = sentence
+                chunk_index += 1
+            else:
+                current_chunk += " " + sentence
+        
+        # Add final chunk
+        if current_chunk.strip():
+            chunk = DocumentChunk(
+                chunk_id=f"{document_id}_chunk_{chunk_index}",
+                content=current_chunk.strip(),
+                metadata={
+                    **metadata,
+                    "chunk_index": chunk_index,
+                    "section_type": "general",
+                    "page_number": max(1, chunk_index // 3 + 1),
+                    "content_type": "text",
+                    "chunk_type": "basic"
+                },
+                citation_info={
+                    "page_number": max(1, chunk_index // 3 + 1),
+                    "section_type": "general",
+                    "document_type": metadata.get("document_type", "financial"),
+                    "company": metadata.get("company_name", ""),
+                }
+            )
+            chunks.append(chunk)
+        
+        logger.info(f"Created {len(chunks)} basic chunks")
+        return chunks
     
     def _structure_to_dict(self, structure: Dict) -> Dict:
         """Convert document structure to dictionary format"""

@@ -45,6 +45,7 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
   const [batchStatus, setBatchStatus] = useState<any>(null);
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
   const statusCheckInterval = useRef<NodeJS.Timeout | null>(null);
+  const errorRetryCount = useRef<number>(0);
 
   useEffect(() => {
     loadData();
@@ -125,13 +126,28 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
       const failedDocs = uploadResponse.filter(doc => doc.status === 'failed');
       
       if (processingDocs.length > 0) {
-        // Extract batch ID from the first processing document
-        const batchId = uploadResponse[0]?.document_id ? `kb_batch_${Math.floor(Date.now() / 1000)}` : null;
+        // Extract batch ID from the response message
+        const firstResponse = uploadResponse[0];
+        let batchId = null;
+        
+        if (firstResponse?.message) {
+          // Extract batch ID from message like "Upload accepted. Processing started (batch kb_batch_1234567890)"
+          const batchMatch = firstResponse.message.match(/batch (kb_batch_\d+)/);
+          if (batchMatch) {
+            batchId = batchMatch[1];
+          }
+        }
+        
+        // Fallback to generating batch ID if not found in message
+        if (!batchId && firstResponse?.document_id) {
+          batchId = `kb_batch_${Math.floor(Date.now() / 1000)}`;
+        }
+        
         setCurrentBatchId(batchId);
         
         if (batchId) {
           // Start batch status polling similar to SEC documents
-          startBatchStatusChecking(batchId, filesArray.length, uploadResponse[0]?.document_id);
+          startBatchStatusChecking(batchId, filesArray.length, firstResponse?.document_id);
         }
       } else if (completedDocs.length > 0) {
         // All documents completed immediately
@@ -184,6 +200,7 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
 
   const startBatchStatusChecking = (batchId: string, totalFiles: number, latestDocId?: string) => {
     console.log('Starting batch status checking for:', batchId);
+    errorRetryCount.current = 0; // Reset error retry count for new batch
     
     // Check immediately first
     const checkStatus = async () => {
@@ -252,8 +269,24 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
           return true; // Continue checking, batch might not be created yet
         }
         
-        // For other errors, continue checking for a while
-        return true;
+        // For other errors, show error message and stop checking after a few attempts
+        if (!errorRetryCount.current) {
+          errorRetryCount.current = 0;
+        }
+        errorRetryCount.current++;
+        
+        if (errorRetryCount.current >= 3) {
+          console.error('Too many errors checking batch status, stopping');
+          setInlineNotice({
+            type: 'error',
+            message: 'Failed to check processing status. Please refresh the page to see if upload completed.',
+          });
+          setIsUploading(false);
+          setUploadProgress(0);
+          return false; // Stop checking
+        }
+        
+        return true; // Continue checking for a few more attempts
       }
     };
     

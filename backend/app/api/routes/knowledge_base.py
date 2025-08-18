@@ -157,7 +157,9 @@ async def list_documents(
                     d["index"] = "policy" if ix == settings.AZURE_SEARCH_POLICY_INDEX_NAME else "claims"
                     d["status"] = "completed"  # basic status for now
                     d.setdefault("type", "")
-                    d.setdefault("chunks", None)
+                    # Don't override chunks if it's already set
+                    if "chunks" not in d:
+                        d["chunks"] = None
                     d.setdefault("conflicts", None)
                 documents.extend(items)
             except Exception as e:

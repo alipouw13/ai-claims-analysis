@@ -238,15 +238,14 @@ class HybridSearchEngine:
         vector_query = VectorizedQuery(
             vector=query_embedding,
             k_nearest_neighbors=top_k,
-            fields="content_vector"
+            fields="text_vector"
         )
         
         search_results = self.search_client.search(
             search_text=None,
             vector_queries=[vector_query],
             top=top_k,
-            select=["chunk_id", "content", "document_id", "document_title", 
-                   "section_title", "page_number", "metadata"]
+            select=["chunk_id", "chunk", "parent_id", "title"]
         )
         
         return [self._convert_to_search_result(result) for result in search_results]
@@ -256,8 +255,7 @@ class HybridSearchEngine:
         search_results = self.search_client.search(
             search_text=query,
             top=top_k,
-            select=["chunk_id", "content", "document_id", "document_title", 
-                   "section_title", "page_number", "metadata"]
+            select=["chunk_id", "chunk", "parent_id", "title"]
         )
         
         return [self._convert_to_search_result(result) for result in search_results]
@@ -269,8 +267,7 @@ class HybridSearchEngine:
             top=top_k,
             query_type="semantic",
             semantic_configuration_name="financial-semantic-config",
-            select=["chunk_id", "content", "document_id", "document_title", 
-                   "section_title", "page_number", "metadata"]
+            select=["chunk_id", "chunk", "parent_id", "title"]
         )
         
         return [self._convert_to_search_result(result) for result in search_results]
@@ -285,7 +282,7 @@ class HybridSearchEngine:
         vector_query = VectorizedQuery(
             vector=query_embedding,
             k_nearest_neighbors=top_k,
-            fields="content_vector"
+            fields="text_vector"
         )
         
         search_results = self.search_client.search(
@@ -294,8 +291,7 @@ class HybridSearchEngine:
             top=top_k,
             query_type="semantic",
             semantic_configuration_name="financial-semantic-config",
-            select=["chunk_id", "content", "document_id", "document_title", 
-                   "section_title", "page_number", "metadata"]
+            select=["chunk_id", "chunk", "parent_id", "title"]
         )
         
         return [self._convert_to_search_result(result) for result in search_results]
@@ -304,14 +300,14 @@ class HybridSearchEngine:
         """Convert Azure Search result to SearchResult object"""
         return SearchResult(
             chunk_id=azure_result.get("chunk_id", ""),
-            content=azure_result.get("content", ""),
+            content=azure_result.get("chunk", ""),  # Use 'chunk' field instead of 'content'
             score=azure_result.get("@search.score", 0.0),
-            document_id=azure_result.get("document_id", ""),
-            document_title=azure_result.get("document_title", ""),
-            section_title=azure_result.get("section_title", ""),
-            page_number=azure_result.get("page_number"),
-            table_data=azure_result.get("table_data"),
-            metadata=azure_result.get("metadata", {})
+            document_id=azure_result.get("parent_id", ""),  # Use 'parent_id' as document_id
+            document_title=azure_result.get("title", ""),  # Use 'title' field
+            section_title=azure_result.get("title", ""),  # Use 'title' as section_title
+            page_number=1,  # Default page number since not in schema
+            table_data=None,  # Not in current schema
+            metadata={"title": azure_result.get("title", "")}  # Basic metadata
         )
 
 class CitationManager:

@@ -263,7 +263,8 @@ async def process_document_async(
             content_type=content_type,
             source=filename,
             metadata=metadata,
-            target_index_name=target_index_name
+            target_index_name=target_index_name,
+            document_id=document_id
         )
         logger.info(f"✅ processor.process_document completed successfully")
         

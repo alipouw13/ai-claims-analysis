@@ -249,15 +249,22 @@ class AzureServiceManager:
                 credential=search_credential
             )
             
-            self.form_recognizer_client = DocumentAnalysisClient(
-                endpoint=settings.AZURE_FORM_RECOGNIZER_ENDPOINT,
-                credential=self.credential
-            )
-            
             self.cosmos_client = CosmosClient(
                 url=settings.AZURE_COSMOS_ENDPOINT,
                 credential=self.credential
             )
+            
+            # Initialize Document Intelligence client (optional)
+            if hasattr(settings, 'AZURE_FORM_RECOGNIZER_ENDPOINT') and settings.AZURE_FORM_RECOGNIZER_ENDPOINT:
+                self.form_recognizer_client = DocumentAnalysisClient(
+                    endpoint=settings.AZURE_FORM_RECOGNIZER_ENDPOINT,
+                    credential=self.credential
+                )
+                logger.info("Document Intelligence client initialized")
+            else:
+                self.form_recognizer_client = None
+                logger.warning("Document Intelligence endpoint not configured - document processing will use fallback methods")
+            
             # Initialize Azure AI Foundry (prefer endpoint+credential per latest SDK; fall back if needed)
             self.project_client = None
             self.ai_foundry_client = None
@@ -458,35 +465,12 @@ class AzureServiceManager:
                 SemanticField, SemanticSearch
             )
             fields = [
-                SimpleField(name="id", type=SearchFieldDataType.String, key=True),
-                SearchableField(name="content", type=SearchFieldDataType.String),
+                SimpleField(name="chunk_id", type=SearchFieldDataType.String, key=True),
+                SimpleField(name="parent_id", type=SearchFieldDataType.String, filterable=True),
+                SearchableField(name="chunk", type=SearchFieldDataType.String),
                 SearchableField(name="title", type=SearchFieldDataType.String),
-                SimpleField(name="document_id", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="source", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="chunk_id", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="document_type", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="company", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="filing_date", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="section_type", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="page_number", type=SearchFieldDataType.Int32, filterable=True),
-                SimpleField(name="credibility_score", type=SearchFieldDataType.Double, filterable=True),
-                SimpleField(name="processed_at", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="citation_info", type=SearchFieldDataType.String),                # SEC-specific fields from Edgar tools
-                SimpleField(name="ticker", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="cik", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="industry", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="sic", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="entity_type", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="form_type", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="accession_number", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="period_end_date", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="chunk_index", type=SearchFieldDataType.Int32, filterable=True),
-                SimpleField(name="content_type", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="chunk_method", type=SearchFieldDataType.String, filterable=True),
-                SimpleField(name="file_size", type=SearchFieldDataType.Int64, filterable=True),
-                SimpleField(name="document_url", type=SearchFieldDataType.String),
                 SearchField(
-                    name="content_vector", 
+                    name="text_vector", 
                     type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
                     searchable=True,
                     vector_search_dimensions=1536,
@@ -520,15 +504,10 @@ class AzureServiceManager:
                 prioritized_fields=SemanticPrioritizedFields(
                     title_field=SemanticField(field_name="title"),
                     content_fields=[
-                        SemanticField(field_name="content"),
-                        SemanticField(field_name="section_type")
-                    ],                    keywords_fields=[
-                        SemanticField(field_name="ticker"),
-                        SemanticField(field_name="company"),
-                        SemanticField(field_name="form_type"),
-                        SemanticField(field_name="document_type"),
-                        SemanticField(field_name="industry"),
-                        SemanticField(field_name="entity_type")
+                        SemanticField(field_name="chunk")
+                    ],
+                    keywords_fields=[
+                        SemanticField(field_name="title")
                     ]
                 )
             )
@@ -559,33 +538,15 @@ class AzureServiceManager:
                         logger.info(f"Index '{ix_name}' already exists")
                     except Exception:
                         logger.info(f"Creating additional index '{ix_name}' for policy/claims separation")
-                        # Tailor schema for policy vs. claims documents
+                        # Use Content Processing Solution Accelerator schema for all indexes
                         if ix_name == policy_ix:
                             policy_fields = [
-                                SimpleField(name="id", type=SearchFieldDataType.String, key=True),
-                                SearchableField(name="content", type=SearchFieldDataType.String),
+                                SimpleField(name="chunk_id", type=SearchFieldDataType.String, key=True),
+                                SimpleField(name="parent_id", type=SearchFieldDataType.String, filterable=True),
+                                SearchableField(name="chunk", type=SearchFieldDataType.String),
                                 SearchableField(name="title", type=SearchFieldDataType.String),
-                                SimpleField(name="document_id", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="source", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="chunk_id", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="section_type", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="page_number", type=SearchFieldDataType.Int32, filterable=True),
-                                SimpleField(name="processed_at", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="citation_info", type=SearchFieldDataType.String),
-                                # Policy-specific metadata (all optional, filterable)
-                                SimpleField(name="policy_number", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="insured_name", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="line_of_business", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="state", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="effective_date", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="expiration_date", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="deductible", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="coverage_limits", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="exclusions", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="endorsements", type=SearchFieldDataType.String, filterable=True),
-                                # Vector field
                                 SearchField(
-                                    name="content_vector",
+                                    name="text_vector", 
                                     type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
                                     searchable=True,
                                     vector_search_dimensions=1536,
@@ -600,28 +561,12 @@ class AzureServiceManager:
                             )
                         elif ix_name == claims_ix:
                             claims_fields = [
-                                SimpleField(name="id", type=SearchFieldDataType.String, key=True),
-                                SearchableField(name="content", type=SearchFieldDataType.String),
+                                SimpleField(name="chunk_id", type=SearchFieldDataType.String, key=True),
+                                SimpleField(name="parent_id", type=SearchFieldDataType.String, filterable=True),
+                                SearchableField(name="chunk", type=SearchFieldDataType.String),
                                 SearchableField(name="title", type=SearchFieldDataType.String),
-                                SimpleField(name="document_id", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="source", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="chunk_id", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="section_type", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="page_number", type=SearchFieldDataType.Int32, filterable=True),
-                                SimpleField(name="processed_at", type=SearchFieldDataType.String, filterable=True),
-                                # Claims-specific metadata
-                                SimpleField(name="claim_id", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="policy_number", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="insured_name", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="date_of_loss", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="loss_cause", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="location", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="coverage_decision", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="settlement_summary", type=SearchFieldDataType.String, filterable=True),
-                                SimpleField(name="payout_amount", type=SearchFieldDataType.Double, filterable=True),
-                                # Vector field
                                 SearchField(
-                                    name="content_vector",
+                                    name="text_vector", 
                                     type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
                                     searchable=True,
                                     vector_search_dimensions=1536,
@@ -854,21 +799,21 @@ class AzureServiceManager:
     
     def _validate_document_schema(self, document: Dict) -> bool:
         """Validate document schema before uploading to search index.
-        Supports both generic/SEC schema (id/content) and policy/claims vector schema (chunk_id/chunk).
+        Supports both Content Processing Solution Accelerator schema (chunk_id/chunk) and 
+        standard schema (id/content) for policy/claims indexes.
         """
-        # Accept either generic schema or vector schema
-        has_generic = bool(document.get('id')) and bool(document.get('content'))
-        has_vector = bool(document.get('chunk_id')) and bool(document.get('chunk'))
-        if not (has_generic or has_vector):
-            logger.warning("Document missing required fields: expected ('id' and 'content') or ('chunk_id' and 'chunk')")
+        # Check for required fields - support both schemas
+        has_chunk_schema = bool(document.get('chunk_id')) and bool(document.get('chunk'))
+        has_standard_schema = bool(document.get('id')) and bool(document.get('content'))
+        
+        if not (has_chunk_schema or has_standard_schema):
+            logger.warning("Document missing required fields: expected ('chunk_id' and 'chunk') or ('id' and 'content')")
             return False
         
-        # Size limits per schema
-        content_length = len(document.get('content', '') or '')
-        chunk_length = len(document.get('chunk', '') or '')
-        size_to_check = content_length if has_generic else chunk_length
-        if size_to_check > 1_000_000:  # 1MB limit
-            logger.warning(f"Document content too large: {size_to_check} characters")
+        # Size limits - check the appropriate content field
+        content_length = len(document.get('chunk', '') or document.get('content', '') or '')
+        if content_length > 1_000_000:  # 1MB limit
+            logger.warning(f"Document content too large: {content_length} characters")
             return False
             
         return True
@@ -906,9 +851,10 @@ class AzureServiceManager:
             policy_ix = getattr(settings, 'AZURE_SEARCH_POLICY_INDEX_NAME', None)
             claims_ix = getattr(settings, 'AZURE_SEARCH_CLAIMS_INDEX_NAME', None)
             is_vector_schema = index_name in {policy_ix, claims_ix}
+            logger.info(f"list_unique_documents: index_name={index_name}, policy_ix={policy_ix}, claims_ix={claims_ix}, is_vector_schema={is_vector_schema}")
 
             if is_vector_schema:
-                select_fields = ["chunk_id", "parent_id", "title"]
+                select_fields = ["chunk_id", "parent_id", "title", "source", "processed_at"]
             else:
                 select_fields = ["id", "document_id", "source", "processed_at", "file_size", "title"]
             try:
@@ -938,7 +884,10 @@ class AzureServiceManager:
                         "filename": rd.get("title") or rd.get("source") or doc_id,
                         "uploadDate": rd.get("processed_at"),
                         "size": rd.get("file_size") or 0,
+                        "chunks": 0,  # Will be counted below
                     }
+                # Count chunks for this document
+                docs_by_id[doc_id]["chunks"] = docs_by_id[doc_id].get("chunks", 0) + 1
             return list(docs_by_id.values())
         except Exception as e:
             logger.error(f"Failed to list documents from index '{index_name}': {e}")

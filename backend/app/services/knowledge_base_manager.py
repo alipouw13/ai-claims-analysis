@@ -291,7 +291,7 @@ class AdaptiveKnowledgeBaseManager:
                 "chunk_index": update.metadata.get("chunk_index", 0),
                 "source_url": update.source,
                 "credibility_score": update.credibility_score,
-                "content_vector": await self.azure_manager.get_embedding(
+                "text_vector": await self.azure_manager.get_embedding(
                     update.content, 
                     token_tracker=token_tracker, 
                     tracking_id=tracking_id

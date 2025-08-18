@@ -28,7 +28,11 @@ def check_azure_config():
         "AZURE_SEARCH_API_KEY",
         "AZURE_OPENAI_ENDPOINT",
         "AZURE_OPENAI_API_KEY",
-        "AZURE_COSMOS_ENDPOINT",
+        "AZURE_COSMOS_ENDPOINT"
+    ]
+    
+    # Optional environment variables
+    optional_vars = [
         "AZURE_FORM_RECOGNIZER_ENDPOINT"
     ]
     
@@ -45,6 +49,15 @@ def check_azure_config():
                 print(f"✅ {var}: {masked_value}")
             else:
                 print(f"✅ {var}: {value}")
+    
+    # Check optional variables
+    print("\nOptional Environment Variables:")
+    for var in optional_vars:
+        value = getattr(settings, var, None)
+        if not value:
+            print(f"⚠️  Optional: {var} (not set)")
+        else:
+            print(f"✅ {var}: {value}")
     
     print("\n" + "=" * 50)
     
@@ -112,8 +125,11 @@ def check_azure_openai():
         
         # Try to list models (this will test the connection)
         import asyncio
-        models = asyncio.run(client.models.list())
-        model_names = [model.id for model in models]
+        async def test_connection():
+            models = await client.models.list()
+            return [model.id for model in models.data]
+        
+        model_names = asyncio.run(test_connection())
         
         print(f"✅ Connected to Azure OpenAI: {settings.AZURE_OPENAI_ENDPOINT}")
         print(f"✅ Found {len(model_names)} models")
