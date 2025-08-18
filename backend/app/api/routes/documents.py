@@ -378,13 +378,68 @@ async def get_document_content(document_id: str, section: Optional[str] = None):
         
         logger.info(f"Document content requested: {document_id}, section: {section}")
         
+        # Initialize Azure services
+        try:
+            azure_manager = AzureServiceManager()
+            await azure_manager.initialize()
+        except Exception as azure_init_error:
+            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            raise HTTPException(status_code=503, detail="Azure services not available")
+        
+        # Search for document chunks in both policy and claims indexes
+        all_chunks = []
+        indexes_to_search = [settings.AZURE_SEARCH_POLICY_INDEX_NAME, settings.AZURE_SEARCH_CLAIMS_INDEX_NAME]
+        
+        for index_name in indexes_to_search:
+            if not index_name:
+                continue
+                
+            try:
+                client = azure_manager.get_search_client_for_index(index_name)
+                search_results = await client.search(
+                    search_text="*",
+                    select=["content", "title", "source", "chunk_id", "parent_id", "document_id"],
+                    filter=f"parent_id eq '{document_id}' or document_id eq '{document_id}'",
+                    top=1000,
+                    query_type="simple"
+                )
+                
+                async for result in search_results:
+                    chunk_data = dict(result)
+                    all_chunks.append(chunk_data)
+                    
+            except Exception as search_error:
+                logger.warning(f"Failed to search index {index_name}: {search_error}")
+                continue
+        
+        if not all_chunks:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Sort chunks by chunk_id to maintain document order
+        all_chunks.sort(key=lambda x: x.get('chunk_id', ''))
+        
+        # Combine all chunk content
+        full_content = "\n\n".join([chunk.get('content', '') for chunk in all_chunks if chunk.get('content')])
+        
+        # Get document metadata from the first chunk
+        metadata = {}
+        if all_chunks:
+            first_chunk = all_chunks[0]
+            metadata = {
+                "title": first_chunk.get('title', ''),
+                "source": first_chunk.get('source', ''),
+                "total_chunks": len(all_chunks)
+            }
+        
         return {
             "document_id": document_id,
             "section": section,
-            "content": "",
-            "chunks": [],
-            "metadata": {}
+            "content": full_content,
+            "chunks": all_chunks,
+            "metadata": metadata
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting document content {document_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve document content")

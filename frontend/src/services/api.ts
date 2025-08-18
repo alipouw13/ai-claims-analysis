@@ -655,6 +655,70 @@ class ApiService {
       method: 'DELETE',
     });
   }
+
+  // Dashboard API methods
+  async getRecentClaims(limit: number = 10): Promise<{
+    claims: Array<{
+      id: string;
+      filename: string;
+      uploadDate: string;
+      status: string;
+      amount: string;
+      type: string;
+      insured_name: string;
+      chunks: number;
+    }>;
+    status: string;
+  }> {
+    return this.makeRequest(`/knowledge-base/recent-claims?limit=${limit}`);
+  }
+
+  async getRecentPolicies(limit: number = 10): Promise<{
+    policies: Array<{
+      id: string;
+      filename: string;
+      uploadDate: string;
+      status: string;
+      type: string;
+      insured_name: string;
+      chunks: number;
+    }>;
+    status: string;
+  }> {
+    return this.makeRequest(`/knowledge-base/recent-policies?limit=${limit}`);
+  }
+
+  async getDashboardStats(): Promise<{
+    stats: {
+      total_policies: number;
+      total_claims: number;
+      policy_types: Record<string, number>;
+      claim_types: Record<string, number>;
+      risk_distribution: {
+        low_risk: number;
+        medium_risk: number;
+        high_risk: number;
+      };
+      auto_approval_percentage: number;
+      avg_risk_score: number;
+    };
+    status: string;
+  }> {
+    return this.makeRequest('/knowledge-base/dashboard-stats');
+  }
+
+  async getBankingDashboardStats(): Promise<{
+    stats: {
+      total_filings: number;
+      companies: Record<string, number>;
+      form_types: Record<string, number>;
+      avg_chunks_per_doc: number;
+      most_recent_filing: string | null;
+    };
+    status: string;
+  }> {
+    return this.makeRequest('/knowledge-base/banking-dashboard-stats');
+  }
 }
 
 export const apiService = new ApiService();

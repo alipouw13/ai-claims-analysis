@@ -395,7 +395,7 @@ class QAAgent(FinancialAgent):
                         )
                         all_chunks.extend(chunks)
                     
-                    unique_chunks = {chunk['chunk_id']: chunk for chunk in all_chunks}.values()
+                    unique_chunks = {chunk.get('id', chunk.get('chunk_id', '')): chunk for chunk in all_chunks}.values()
                     sorted_chunks = sorted(unique_chunks, key=lambda x: x.get('score', 0), reverse=True)[:10]
                 
                 logger.info(f"📚 Using {len(sorted_chunks)} chunks for context")
@@ -403,7 +403,7 @@ class QAAgent(FinancialAgent):
                 verification_details = await self._verify_sources_internal(sorted_chunks)
                 
                 knowledge_context = "\n\n".join([
-                    f"Source: {chunk.get('source', 'Unknown')} (Credibility: {verification_details.get(chunk.get('chunk_id', 'unknown'), {}).get('score', 0.5):.2f})\n{chunk.get('content', '')}"
+                    f"Source: {chunk.get('source', 'Unknown')} (Credibility: {verification_details.get(chunk.get('id', chunk.get('chunk_id', 'unknown')), {}).get('score', 0.5):.2f})\n{chunk.get('content', '')}"
                     for chunk in sorted_chunks
                 ])
                 
@@ -465,12 +465,12 @@ class QAAgent(FinancialAgent):
                 
                 combined_sources = []
                 for chunk in sorted_chunks:
-                    credibility_score = verification_details.get(chunk.get('chunk_id', 'unknown'), {}).get('score', 0.5)
+                    credibility_score = verification_details.get(chunk.get('id', chunk.get('chunk_id', 'unknown')), {}).get('score', 0.5)
                     combined_sources.append({
                         "content": chunk.get('content', ''),
                         "source": chunk.get('source', 'Unknown'),
                         "document_type": chunk.get('document_type', 'Unknown'),
-                        "document_id": chunk.get('document_id', chunk.get('chunk_id', 'unknown')),
+                        "document_id": chunk.get('document_id', chunk.get('id', chunk.get('chunk_id', 'unknown'))),
                         "document_title": chunk.get('title', chunk.get('source', 'Unknown Document')),
                         "section": chunk.get('section_type', 'Unknown'),
                         "section_title": chunk.get('section_type', 'Unknown'),
@@ -660,7 +660,7 @@ class QAAgent(FinancialAgent):
                 source_info = []
                 for i, source in enumerate(sources):
                     source_info.append({
-                        "id": source.get("chunk_id", f"source_{i}"),
+                        "id": source.get("id", source.get("chunk_id", f"source_{i}")),
                         "content": source.get("content", "")[:500],  # Limit content length
                         "metadata": source.get("metadata", {}),
                         "document_type": source.get("metadata", {}).get("document_type", "Unknown"),
@@ -703,7 +703,7 @@ class QAAgent(FinancialAgent):
                 
                 credibility_scores = []
                 for i, source in enumerate(sources):
-                    source_id = source.get("chunk_id", f"source_{i}")
+                    source_id = source.get("id", source.get("chunk_id", f"source_{i}"))
                     
                     internal_data = internal_verification.get(source_id, {})
                     internal_score = internal_data.get("score", 0.5)
@@ -745,9 +745,9 @@ class QAAgent(FinancialAgent):
             verification_details = await self._verify_sources_internal(sources)
             credibility_scores = [
                 {
-                    "source_id": source.get('chunk_id', 'unknown'),
-                    "score": verification_details.get(source.get('chunk_id', 'unknown'), {}).get('score', 0.5),
-                    "factors": verification_details.get(source.get('chunk_id', 'unknown'), {}).get('factors', []),
+                                    "source_id": source.get('id', source.get('chunk_id', 'unknown')),
+                "score": verification_details.get(source.get('id', source.get('chunk_id', 'unknown')), {}).get('score', 0.5),
+                "factors": verification_details.get(source.get('id', source.get('chunk_id', 'unknown')), {}).get('factors', []),
                     "verification_method": "internal_fallback"
                 }
                 for source in sources
@@ -765,7 +765,7 @@ class QAAgent(FinancialAgent):
         verification_details = {}
         
         for chunk in chunks:
-            chunk_id = chunk.get('chunk_id', 'unknown')
+            chunk_id = chunk.get('id', chunk.get('chunk_id', 'unknown'))
             
             score = 0.5  # Base score
             factors = []
@@ -805,7 +805,7 @@ class QAAgent(FinancialAgent):
         
         relevance_scores = [chunk.get('score', 0.0) for chunk in chunks]
         credibility_scores = [
-            verification_details.get(chunk.get('chunk_id', ''), {}).get('score', 0.5)
+            verification_details.get(chunk.get('id', chunk.get('chunk_id', '')), {}).get('score', 0.5)
             for chunk in chunks
         ]
         

@@ -10,7 +10,7 @@ class InsuranceKnowledgeBaseManager:
     """Policy/Claims knowledge base manager that mirrors the financial KB manager but targets insurance indexes.
 
     - Uses simple query (no semantic rank) for policy and claims indexes
-    - Normalizes vector schema fields (chunk_id, parent_id, chunk, title, processed_at)
+    - Normalizes vector schema fields (id, parent_id, content, title, source, processed_at)
     - Provides helpers for field filtering (policy_number, claim_id)
     """
 
@@ -55,7 +55,7 @@ class InsuranceKnowledgeBaseManager:
                         top=top_k,
                         filter=filter_str,
                         query_type="simple",
-                        select=["chunk_id", "parent_id", "chunk", "title", "processed_at", "credibility_score", "page_number"],
+                        select=["id", "parent_id", "content", "title", "source", "processed_at", "credibility_score", "page_number"],
                     )
                 except Exception:
                     paged = await client.search(
@@ -66,9 +66,12 @@ class InsuranceKnowledgeBaseManager:
                     )
                 async for r in paged:
                     rd = dict(r)
-                    # Normalize content key
+                    # Normalize content key for backward compatibility
                     if 'chunk' in rd and 'content' not in rd:
                         rd['content'] = rd['chunk']
+                    # Ensure we have the standard field names
+                    if 'id' not in rd and 'chunk_id' in rd:
+                        rd['id'] = rd['chunk_id']
                     results.append(rd)
             except Exception as e:
                 logger.warning(f"Insurance KB search failed for index {index_name}: {e}")
@@ -76,7 +79,7 @@ class InsuranceKnowledgeBaseManager:
         # Deduplicate by key preference
         best_by_id: Dict[str, Dict] = {}
         for item in results:
-            key = item.get('chunk_id') or item.get('parent_id') or item.get('id')
+            key = item.get('id') or item.get('chunk_id') or item.get('parent_id')
             if not key:
                 key = f"auto_{len(best_by_id)+1}"
             if key not in best_by_id:

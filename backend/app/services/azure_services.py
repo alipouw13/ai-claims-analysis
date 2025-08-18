@@ -541,12 +541,13 @@ class AzureServiceManager:
                         # Use Content Processing Solution Accelerator schema for all indexes
                         if ix_name == policy_ix:
                             policy_fields = [
-                                SimpleField(name="chunk_id", type=SearchFieldDataType.String, key=True),
+                                SimpleField(name="id", type=SearchFieldDataType.String, key=True),
                                 SimpleField(name="parent_id", type=SearchFieldDataType.String, filterable=True),
-                                SearchableField(name="chunk", type=SearchFieldDataType.String),
+                                SearchableField(name="content", type=SearchFieldDataType.String),
                                 SearchableField(name="title", type=SearchFieldDataType.String),
+                                SearchableField(name="source", type=SearchFieldDataType.String),
                                 SearchField(
-                                    name="text_vector", 
+                                    name="content_vector", 
                                     type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
                                     searchable=True,
                                     vector_search_dimensions=1536,
@@ -561,12 +562,13 @@ class AzureServiceManager:
                             )
                         elif ix_name == claims_ix:
                             claims_fields = [
-                                SimpleField(name="chunk_id", type=SearchFieldDataType.String, key=True),
+                                SimpleField(name="id", type=SearchFieldDataType.String, key=True),
                                 SimpleField(name="parent_id", type=SearchFieldDataType.String, filterable=True),
-                                SearchableField(name="chunk", type=SearchFieldDataType.String),
+                                SearchableField(name="content", type=SearchFieldDataType.String),
                                 SearchableField(name="title", type=SearchFieldDataType.String),
+                                SearchableField(name="source", type=SearchFieldDataType.String),
                                 SearchField(
-                                    name="text_vector", 
+                                    name="content_vector", 
                                     type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
                                     searchable=True,
                                     vector_search_dimensions=1536,

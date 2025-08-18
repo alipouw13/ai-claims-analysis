@@ -387,45 +387,28 @@ export const SubmitClaim: React.FC<SubmitClaimProps> = ({ onClaimUploaded, onDoc
       setPreviewLoading(true);
       setPreviewError(null);
 
-      // Mock document content (in real implementation, this would come from the document content endpoint)
-      const mockDocumentContent = `
-CONTOSO CLAIM FORM
-Property Loss or Damage Claim
+      // Load actual document content from the backend
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+      const response = await fetch(`${apiBaseUrl}/documents/${documentId}/content`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load document content: ${response.status} ${response.statusText}`);
+      }
 
-1. POLICY & CLAIM INFORMATION
-Policyholder: Emma Martinez
-Policy Number: PH789012
-Coverage Type: Homeowners
-Claim Number: CL456789
-Date of Loss: 2021-07-25
-Time of Loss: 16:45
-
-Property Address:
-9101 Oak St
-Brooklyn, NY 11201
-
-2. CLAIM DETAILS
-Cause of Loss: A tree fell on the roof during a storm, causing structural damage and water leakage into the attic.
-
-Estimated Loss: $25,000
-
-Items Damaged:
-- Samsung Galaxy S20 (Water damage)
-- Dell XPS 15 Laptop (Falling debris damage)
-- Various household items
-
-3. CONTACT INFORMATION
-Phone: 718-555-0321
-Email: emma.martinez@email.com
-
-Date Prepared: 2021-07-26
-      `;
-
-      setDocumentContent(mockDocumentContent);
+      const data = await response.json();
+      
+      // Use the actual document content from the response
+      const documentContent = data.content || data.text || data.document_content || 
+        `Document: ${filename}\n\nContent not available for this document.`;
+      
+      setDocumentContent(documentContent);
 
     } catch (err) {
       console.error('Failed to load document data:', err);
       setPreviewError(err instanceof Error ? err.message : 'Failed to load document data');
+      
+      // Fallback to a generic message if the API call fails
+      setDocumentContent(`Document: ${filename}\n\nUnable to load document content. Please try again later.`);
     } finally {
       setPreviewLoading(false);
     }

@@ -120,7 +120,7 @@ class FinancialRAGMCPServer:
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize MCP server: {e}", exc_info=True)
             raise
-
+    
     def get_available_tools(self) -> List[Dict[str, Any]]:
         """Return list of available MCP tools"""
         return [

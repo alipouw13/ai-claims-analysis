@@ -171,6 +171,388 @@ async def list_documents(
         # Return graceful error response instead of 500
         return {"documents": [], "status": "error", "error_message": str(e)}
 
+@router.get("/recent-claims")
+async def get_recent_claims(limit: int = 10):
+    """Get recent claims for dashboard display"""
+    try:
+        observability.track_request("get_recent_claims")
+        
+        # Check if Azure services are configured
+        if not (settings.AZURE_SEARCH_SERVICE_NAME and 
+                (settings.AZURE_SEARCH_API_KEY or 
+                 (settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID and settings.AZURE_CLIENT_SECRET))):
+            logger.warning("Azure Search not configured, returning empty claims list")
+            return {"claims": [], "status": "azure_not_configured"}
+
+        try:
+            azure_manager = AzureServiceManager()
+            await azure_manager.initialize()
+        except Exception as azure_init_error:
+            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            return {"claims": [], "status": "azure_initialization_failed"}
+
+        # Get claims from the claims index
+        claims_index = settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
+        if not claims_index:
+            logger.warning("No claims index configured")
+            return {"claims": [], "status": "no_claims_index_configured"}
+
+        try:
+            # Get recent claims documents
+            claims_documents = await azure_manager.list_unique_documents(claims_index)
+            
+            # Sort by upload date (most recent first) and limit, handle null values
+            claims_documents.sort(key=lambda x: x.get('uploadDate') if x.get('uploadDate') else '1900-01-01', reverse=True)
+            recent_claims = claims_documents[:limit]
+            
+            # Transform to dashboard format
+            dashboard_claims = []
+            for claim in recent_claims:
+                # Extract claim information from the document
+                filename = claim.get('filename', 'Unknown Claim')
+                
+                # Try to extract claim details from filename or metadata
+                # This is a simple extraction - in a real system, you'd parse the actual claim content
+                claim_info = {
+                    'id': claim.get('id', ''),
+                    'filename': filename,
+                    'uploadDate': claim.get('uploadDate', ''),
+                    'status': 'pending',  # Default status
+                    'amount': '$0',  # Default amount - would be extracted from claim content
+                    'type': 'Claim',  # Default type
+                    'insured_name': 'Unknown',  # Would be extracted from claim content
+                    'chunks': claim.get('chunks', 0)
+                }
+                
+                # Try to extract more information from filename
+                if 'claim' in filename.lower():
+                    if 'auto' in filename.lower():
+                        claim_info['type'] = 'Auto Accident'
+                    elif 'property' in filename.lower():
+                        claim_info['type'] = 'Property Damage'
+                    elif 'medical' in filename.lower():
+                        claim_info['type'] = 'Medical Claim'
+                    elif 'liability' in filename.lower():
+                        claim_info['type'] = 'Liability Claim'
+                
+                dashboard_claims.append(claim_info)
+            
+            return {"claims": dashboard_claims, "status": "success"}
+            
+        except Exception as e:
+            logger.warning(f"Error getting claims from index '{claims_index}': {e}")
+            return {"claims": [], "status": "index_error", "error_message": str(e)}
+            
+    except Exception as e:
+        logger.error(f"Error getting recent claims: {e}")
+        return {"claims": [], "status": "error", "error_message": str(e)}
+
+@router.get("/recent-policies")
+async def get_recent_policies(limit: int = 10):
+    """Get recent policies for dashboard display"""
+    try:
+        observability.track_request("get_recent_policies")
+        
+        # Check if Azure services are configured
+        if not (settings.AZURE_SEARCH_SERVICE_NAME and 
+                (settings.AZURE_SEARCH_API_KEY or 
+                 (settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID and settings.AZURE_CLIENT_SECRET))):
+            logger.warning("Azure Search not configured, returning empty policies list")
+            return {"policies": [], "status": "azure_not_configured"}
+
+        try:
+            azure_manager = AzureServiceManager()
+            await azure_manager.initialize()
+        except Exception as azure_init_error:
+            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            return {"policies": [], "status": "azure_initialization_failed"}
+
+        # Get policies from the policy index
+        policy_index = settings.AZURE_SEARCH_POLICY_INDEX_NAME
+        if not policy_index:
+            logger.warning("No policy index configured")
+            return {"policies": [], "status": "no_policy_index_configured"}
+
+        try:
+            # Get recent policy documents
+            policy_documents = await azure_manager.list_unique_documents(policy_index)
+            
+            # Sort by upload date (most recent first) and limit, handle null values
+            policy_documents.sort(key=lambda x: x.get('uploadDate') if x.get('uploadDate') else '1900-01-01', reverse=True)
+            recent_policies = policy_documents[:limit]
+            
+            # Transform to dashboard format
+            dashboard_policies = []
+            for policy in recent_policies:
+                # Extract policy information from the document
+                filename = policy.get('filename', 'Unknown Policy')
+                
+                # Try to extract policy details from filename or metadata
+                policy_info = {
+                    'id': policy.get('id', ''),
+                    'filename': filename,
+                    'uploadDate': policy.get('uploadDate', ''),
+                    'status': 'analyzed',  # Default status
+                    'type': 'Policy',  # Default type
+                    'insured_name': 'Unknown',  # Would be extracted from policy content
+                    'chunks': policy.get('chunks', 0)
+                }
+                
+                # Try to extract more information from filename
+                if 'policy' in filename.lower():
+                    if 'auto' in filename.lower():
+                        policy_info['type'] = 'Auto Insurance'
+                    elif 'life' in filename.lower():
+                        policy_info['type'] = 'Life Insurance'
+                    elif 'home' in filename.lower():
+                        policy_info['type'] = 'Home Insurance'
+                    elif 'commercial' in filename.lower():
+                        if 'property' in filename.lower():
+                            policy_info['type'] = 'Commercial Property'
+                        elif 'liability' in filename.lower():
+                            policy_info['type'] = 'Commercial Liability'
+                    elif 'umbrella' in filename.lower():
+                        policy_info['type'] = 'Umbrella Insurance'
+                
+                dashboard_policies.append(policy_info)
+            
+            return {"policies": dashboard_policies, "status": "success"}
+            
+        except Exception as e:
+            logger.warning(f"Error getting policies from index '{policy_index}': {e}")
+            return {"policies": [], "status": "index_error", "error_message": str(e)}
+            
+    except Exception as e:
+        logger.error(f"Error getting recent policies: {e}")
+        return {"policies": [], "status": "error", "error_message": str(e)}
+
+@router.get("/dashboard-stats")
+async def get_dashboard_stats():
+    """Get dashboard statistics for insurance/banking dashboards"""
+    try:
+        observability.track_request("get_dashboard_stats")
+        
+        # Check if Azure services are configured
+        if not (settings.AZURE_SEARCH_SERVICE_NAME and 
+                (settings.AZURE_SEARCH_API_KEY or 
+                 (settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID and settings.AZURE_CLIENT_SECRET))):
+            logger.warning("Azure Search not configured, returning empty stats")
+            return {"stats": {}, "status": "azure_not_configured"}
+
+        try:
+            azure_manager = AzureServiceManager()
+            await azure_manager.initialize()
+        except Exception as azure_init_error:
+            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            return {"stats": {}, "status": "azure_initialization_failed"}
+
+        stats = {}
+        
+        # Get policy stats
+        policy_index = settings.AZURE_SEARCH_POLICY_INDEX_NAME
+        if policy_index:
+            try:
+                policy_documents = await azure_manager.list_unique_documents(policy_index)
+                stats['total_policies'] = len(policy_documents)
+                stats['policy_types'] = {}
+                
+                # Count policy types
+                for policy in policy_documents:
+                    filename = policy.get('filename', '').lower()
+                    if 'auto' in filename:
+                        stats['policy_types']['Auto Insurance'] = stats['policy_types'].get('Auto Insurance', 0) + 1
+                    elif 'life' in filename:
+                        stats['policy_types']['Life Insurance'] = stats['policy_types'].get('Life Insurance', 0) + 1
+                    elif 'home' in filename:
+                        stats['policy_types']['Home Insurance'] = stats['policy_types'].get('Home Insurance', 0) + 1
+                    elif 'commercial' in filename:
+                        if 'property' in filename:
+                            stats['policy_types']['Commercial Property'] = stats['policy_types'].get('Commercial Property', 0) + 1
+                        elif 'liability' in filename:
+                            stats['policy_types']['Commercial Liability'] = stats['policy_types'].get('Commercial Liability', 0) + 1
+                    elif 'umbrella' in filename:
+                        stats['policy_types']['Umbrella Insurance'] = stats['policy_types'].get('Umbrella Insurance', 0) + 1
+                    else:
+                        stats['policy_types']['Other'] = stats['policy_types'].get('Other', 0) + 1
+            except Exception as e:
+                logger.warning(f"Error getting policy stats: {e}")
+                stats['total_policies'] = 0
+                stats['policy_types'] = {}
+        
+        # Get claims stats
+        claims_index = settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
+        if claims_index:
+            try:
+                claims_documents = await azure_manager.list_unique_documents(claims_index)
+                stats['total_claims'] = len(claims_documents)
+                stats['claim_types'] = {}
+                
+                # Count claim types
+                for claim in claims_documents:
+                    filename = claim.get('filename', '').lower()
+                    if 'auto' in filename:
+                        stats['claim_types']['Auto Accident'] = stats['claim_types'].get('Auto Accident', 0) + 1
+                    elif 'property' in filename:
+                        stats['claim_types']['Property Damage'] = stats['claim_types'].get('Property Damage', 0) + 1
+                    elif 'medical' in filename:
+                        stats['claim_types']['Medical Claim'] = stats['claim_types'].get('Medical Claim', 0) + 1
+                    elif 'liability' in filename:
+                        stats['claim_types']['Liability Claim'] = stats['claim_types'].get('Liability Claim', 0) + 1
+                    else:
+                        stats['claim_types']['Other'] = stats['claim_types'].get('Other', 0) + 1
+            except Exception as e:
+                logger.warning(f"Error getting claims stats: {e}")
+                stats['total_claims'] = 0
+                stats['claim_types'] = {}
+        
+        # Calculate risk distribution (mock data for now)
+        total_policies = stats.get('total_policies', 0)
+        stats['risk_distribution'] = {
+            'low_risk': max(0, total_policies // 3),  # Mock calculation
+            'medium_risk': max(0, total_policies // 2),  # Mock calculation
+            'high_risk': max(0, total_policies // 6),  # Mock calculation
+        }
+        
+        # Calculate auto approval percentage (mock data for now)
+        stats['auto_approval_percentage'] = 50  # Mock percentage
+        
+        # Calculate average risk score (mock data for now)
+        stats['avg_risk_score'] = 46  # Mock score
+        
+        return {"stats": stats, "status": "success"}
+        
+    except Exception as e:
+        logger.error(f"Error getting dashboard stats: {e}")
+        return {"stats": {}, "status": "error", "error_message": str(e)}
+
+@router.get("/banking-dashboard-stats")
+async def get_banking_dashboard_stats():
+    """Get dashboard statistics for banking dashboard"""
+    try:
+        observability.track_request("get_banking_dashboard_stats")
+        
+        # Check if Azure services are configured
+        if not (settings.AZURE_SEARCH_SERVICE_NAME and 
+                (settings.AZURE_SEARCH_API_KEY or 
+                 (settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID and settings.AZURE_CLIENT_SECRET))):
+            logger.warning("Azure Search not configured, returning empty banking stats")
+            return {"stats": {}, "status": "azure_not_configured"}
+
+        try:
+            azure_manager = AzureServiceManager()
+            await azure_manager.initialize()
+        except Exception as azure_init_error:
+            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            return {"stats": {}, "status": "azure_initialization_failed"}
+
+        # Get SEC documents from the rag-sec index
+        financial_index = "rag-sec"  # Use the correct index name for SEC documents
+        if not financial_index:
+            logger.warning("No financial documents index configured")
+            return {"stats": {}, "status": "no_financial_index_configured"}
+
+        try:
+            # Get all SEC documents using the same comprehensive approach as SEC Document Library
+            all_results: List[Dict[str, Any]] = []
+            skip = 0
+            batch_size = 1000
+            client = azure_manager.get_search_client_for_index(financial_index)
+            
+            while True:
+                search_results = await client.search(
+                    search_text="*",
+                    select=[
+                        "content", "document_id", "source", "chunk_id",
+                        "company", "filing_date", "form_type", "processed_at",
+                        "ticker", "cik", "industry", "document_url", "section_type", "accession_number"
+                    ],
+                    top=batch_size,
+                    skip=skip,
+                    query_type="simple"
+                )
+                batch: List[Dict[str, Any]] = []
+                async for r in search_results:
+                    batch.append(dict(r))
+                if not batch:
+                    break
+                all_results.extend(batch)
+                if len(batch) < batch_size:
+                    break
+                skip += batch_size
+            
+            # Group by document_id and aggregate
+            docs_by_id: Dict[str, Dict[str, Any]] = {}
+            for r in all_results:
+                doc_id = r.get("document_id") or r.get("chunk_id")
+                if not doc_id:
+                    continue
+                if doc_id not in docs_by_id:
+                    docs_by_id[doc_id] = {
+                        "document_id": doc_id,
+                        "company": r.get("company", "Unknown Company"),
+                        "ticker": r.get("ticker", "N/A"),
+                        "form_type": r.get("form_type", "Unknown"),
+                        "filing_date": r.get("filing_date", ""),
+                        "accession_number": r.get("accession_number", ""),
+                        "chunk_count": 0,
+                        "processed_at": r.get("processed_at", ""),
+                        "source": r.get("source", ""),
+                        "cik": r.get("cik", ""),
+                        "industry": r.get("industry", ""),
+                        "document_url": r.get("document_url", ""),
+                        "section_type": r.get("section_type", "")
+                    }
+                docs_by_id[doc_id]["chunk_count"] += 1
+            
+            sec_documents = list(docs_by_id.values())
+            
+            stats = {
+                'total_filings': len(sec_documents),
+                'companies': {},
+                'form_types': {},
+                'avg_chunks_per_doc': 0,
+                'most_recent_filing': None
+            }
+            
+            # Calculate statistics
+            total_chunks = 0
+            companies = set()
+            form_types = set()
+            filing_dates = []
+            
+            for doc in sec_documents:
+                total_chunks += doc.get('chunk_count', 0)
+                company = doc.get('company', 'Unknown')
+                if company and company != 'Unknown Company':
+                    companies.add(company)
+                
+                form_type = doc.get('form_type', '')
+                if form_type and form_type != 'Unknown':
+                    form_types.add(form_type)
+                
+                filing_date = doc.get('filing_date', '')
+                if filing_date:
+                    filing_dates.append(filing_date)
+            
+            stats['companies'] = {company: 1 for company in companies}
+            stats['form_types'] = {form_type: 1 for form_type in form_types}
+            stats['avg_chunks_per_doc'] = round(total_chunks / len(sec_documents), 2) if sec_documents else 0
+            
+            if filing_dates:
+                # Find most recent filing date
+                most_recent = max(filing_dates)
+                stats['most_recent_filing'] = most_recent.split('T')[0] if 'T' in most_recent else most_recent
+            
+            return {"stats": stats, "status": "success"}
+            
+        except Exception as e:
+            logger.warning(f"Error getting banking stats from index '{financial_index}': {e}")
+            return {"stats": {}, "status": "index_error", "error_message": str(e)}
+            
+    except Exception as e:
+        logger.error(f"Error getting banking dashboard stats: {e}")
+        return {"stats": {}, "status": "error", "error_message": str(e)}
+
 @router.get("/documents/{document_id}", response_model=DocumentInfo)
 async def get_document(document_id: str):
     """Get specific document information"""
