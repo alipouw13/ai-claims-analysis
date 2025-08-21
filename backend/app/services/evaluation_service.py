@@ -18,6 +18,7 @@ import os
 
 # Import OpenAI for custom evaluation
 from openai import AsyncAzureOpenAI
+from azure.identity import ClientSecretCredential
 
 from ..core.config import settings
 from ..models.schemas import (
@@ -1009,12 +1010,29 @@ class CustomEvaluator:
     def _initialize_client(self):
         """Initialize Azure OpenAI client for evaluation"""
         try:
-            self.client = AsyncAzureOpenAI(
-                azure_endpoint=settings.AZURE_EVALUATION_ENDPOINT or settings.AZURE_OPENAI_ENDPOINT,
-                api_key=settings.AZURE_EVALUATION_API_KEY or settings.AZURE_OPENAI_API_KEY,
-                api_version=settings.AZURE_OPENAI_API_VERSION
-            )
-            logger.info("Custom evaluator OpenAI client initialized")
+            # Use the same authentication method as the main Azure services
+            if settings.AZURE_CLIENT_SECRET and settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID:
+                from azure.identity import ClientSecretCredential
+                credential = ClientSecretCredential(
+                    tenant_id=settings.AZURE_TENANT_ID,
+                    client_id=settings.AZURE_CLIENT_ID,
+                    client_secret=settings.AZURE_CLIENT_SECRET
+                )
+                
+                self.client = AsyncAzureOpenAI(
+                    azure_endpoint=settings.AZURE_EVALUATION_ENDPOINT or settings.AZURE_OPENAI_ENDPOINT,
+                    azure_ad_token_provider=credential,
+                    api_version=settings.AZURE_OPENAI_API_VERSION
+                )
+                logger.info("Custom evaluator OpenAI client initialized with Service Principal authentication")
+            else:
+                # Fallback to API key authentication
+                self.client = AsyncAzureOpenAI(
+                    azure_endpoint=settings.AZURE_EVALUATION_ENDPOINT or settings.AZURE_OPENAI_ENDPOINT,
+                    api_key=settings.AZURE_EVALUATION_API_KEY or settings.AZURE_OPENAI_API_KEY,
+                    api_version=settings.AZURE_OPENAI_API_VERSION
+                )
+                logger.info("Custom evaluator OpenAI client initialized with API key authentication")
             
         except Exception as e:
             logger.error(f"Failed to initialize custom evaluator: {e}")
