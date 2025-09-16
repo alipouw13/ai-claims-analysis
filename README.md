@@ -12,7 +12,7 @@ This repo implements a complete RAG Financial POC with three interconnected use 
 
 ## Key Features
 
-### 🧠 Adaptive Knowledge Base Management
+### Adaptive Knowledge Base Management
 - **Multi-Domain Document Processing**: Support for banking (SEC documents), insurance policies, and claims documents
 - **Intelligent Index Routing**: Automatic routing to appropriate indexes based on document type and domain
 - **Information Acquisition**: Automated ingestion from multiple financial document sources
@@ -21,14 +21,14 @@ This repo implements a complete RAG Financial POC with three interconnected use 
 - **Conflict Resolution**: Intelligent handling of contradictory financial information
 - **Response Adaptation**: Dynamic updates based on new market data and reports
 
-### 📊 Advanced Observability & Evaluation
+### Advanced Observability & Evaluation
 - **Token Usage Tracking**: Real-time monitoring across all Azure OpenAI models
 - **Evaluation Framework**: Custom metrics for relevance, groundedness, coherence, and fluency
 - **Distributed Tracing**: OpenTelemetry integration for complete request tracking
 - **Admin Dashboard**: Comprehensive metrics visualization with real-time updates
 - **Cost Monitoring**: Detailed cost tracking and budget alerts
 
-### 🤖 Multi-Agent Orchestration
+### Multi-Agent Orchestration
 - **Semantic Kernel Integration**: Coordinated agent workflows for document processing
 - **Domain-Specific Insurance Agents**: Auto, Life, Health, Dental, and General insurance specialists
 - **MCP (Model Context Protocol)**: Standardized agent communication patterns
@@ -36,7 +36,7 @@ This repo implements a complete RAG Financial POC with three interconnected use 
 - **Financial Document Specialists**: Dedicated agents for 10-K/10-Q report analysis
 - **Parallel Agent Execution**: Multiple agents working simultaneously for faster processing
 
-### 🌐 Model Context Protocol (MCP) Integration
+### Model Context Protocol (MCP) Integration
 - **Multiple Protocols**: Support for stdin/stdout, HTTP JSON-RPC, WebSocket, and Server-Sent Events
 - **Claude Compatibility**: Native integration with Claude Desktop and other MCP clients
 - **Streaming Support**: Real-time progress updates for long-running financial analysis
@@ -44,7 +44,7 @@ This repo implements a complete RAG Financial POC with three interconnected use 
 - **External Client Support**: Easy integration with VS Code extensions, web apps, and custom clients
 - **Enhanced A2A Communication**: Advanced agent-to-agent communication patterns
 
-### 🔍 Hybrid Search & RAG Pipeline
+### Hybrid Search & RAG Pipeline
 - **Multi-Index Search**: Support for policy, claims, and financial document indexes
 - **Vector Search**: Semantic similarity using Azure AI Search
 - **Keyword Search**: Traditional text matching for precise queries
@@ -52,7 +52,7 @@ This repo implements a complete RAG Financial POC with three interconnected use 
 - **Citation Management**: Comprehensive source tracking and inline citations
 - **Financial Context**: Industry-specific prompt engineering and chunking strategies
 
-### 🏢 Azure AI Foundry Integration
+### Azure AI Foundry Integration
 - **Agent Deployment**: Native Azure AI Foundry agent deployment with tools
 - **Tool Integration**: Seamless integration of Azure AI Search, Bing Search, and Knowledge Base tools
 - **Connection Management**: Automatic creation and management of Azure service connections
@@ -224,7 +224,7 @@ The system automatically routes documents to appropriate indexes based on:
 
 The system includes a comprehensive MCP server that can be used by Claude, VS Code extensions, and other MCP-compatible clients.
 
-### 🚀 MCP Server Features
+### MCP Server Features
 
 - **Multiple Protocols**: Support for stdin/stdout, HTTP, WebSocket, and SSE
 - **Streaming Responses**: Real-time progress updates for long-running operations
