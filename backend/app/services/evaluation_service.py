@@ -1021,7 +1021,7 @@ class CustomEvaluator:
                 
                 self.client = AsyncAzureOpenAI(
                     azure_endpoint=settings.AZURE_EVALUATION_ENDPOINT or settings.AZURE_OPENAI_ENDPOINT,
-                    azure_ad_token_provider=credential,
+                    azure_ad_token_provider=lambda: credential.get_token("https://cognitiveservices.azure.com/.default").token,
                     api_version=settings.AZURE_OPENAI_API_VERSION
                 )
                 logger.info("Custom evaluator OpenAI client initialized with Service Principal authentication")

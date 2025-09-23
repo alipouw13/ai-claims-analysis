@@ -66,6 +66,15 @@ class AzureOpenAIDeploymentService:
         if self.credential:
             await self.credential.close()
     
+    async def close(self):
+        """Explicitly close the session and credential"""
+        if self._session:
+            await self._session.close()
+            self._session = None
+        if self.credential:
+            await self.credential.close()
+            self.credential = None
+    
     async def _get_access_token(self) -> str:
         """Get Azure access token for Management API"""
         try:

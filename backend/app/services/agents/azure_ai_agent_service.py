@@ -296,18 +296,26 @@ class AzureAIAgentService:
                 
                 completed_run = await self._wait_for_run_completion(thread_id, run.id)
                 
-                messages = self.client.agents.messages.list(thread_id=thread_id)
+                # Convert ItemPaged to list to avoid len() errors
+                messages_paged = self.client.agents.messages.list(thread_id=thread_id)
+                messages = list(messages_paged)
                 
                 response_content = ""
                 sources = []
                 
+                logger.info(f"Processing {len(messages)} messages from thread {thread_id}")
+                
                 for message in messages:
+                    logger.info(f"Message role: {message.role}, has content: {hasattr(message, 'content')}")
                     if message.role == "assistant":
                         # Handle text messages as in Azure AI Projects SDK
                         if hasattr(message, 'content') and message.content:
+                            logger.info(f"Processing content with {len(message.content)} items")
                             for content in message.content:
+                                logger.info(f"Content type: {type(content)}, has text: {hasattr(content, 'text')}")
                                 if hasattr(content, 'text') and content.text:
                                     response_content = content.text.value
+                                    logger.info(f"Extracted response content: {response_content[:100]}...")
                                     # Handle annotations for sources
                                     if hasattr(content.text, 'annotations'):
                                         for annotation in content.text.annotations:
@@ -319,8 +327,17 @@ class AzureAIAgentService:
                                                 })
                         # Also check text_messages as used in samples
                         elif hasattr(message, 'text_messages') and message.text_messages:
+                            logger.info(f"Using text_messages fallback with {len(message.text_messages)} messages")
                             last_text = message.text_messages[-1]
                             response_content = last_text.text.value
+                            logger.info(f"Extracted from text_messages: {response_content[:100]}...")
+                        # Additional fallback - check if message has direct text attribute
+                        elif hasattr(message, 'text'):
+                            logger.info("Using direct text attribute fallback")
+                            response_content = message.text
+                            logger.info(f"Extracted from direct text: {response_content[:100]}...")
+                        else:
+                            logger.warning(f"Assistant message found but no extractable content. Available attributes: {dir(message)}")
                         break
                 
                 if thread_id in self.conversations:
@@ -858,6 +875,7 @@ class AzureAIAgentService:
                 )
                 # Fallback: if the agent returned no text, synthesize an answer directly with AOAI
                 if not (result.response or "").strip():
+                    logger.warning("Agent returned empty response, attempting direct OpenAI fallback...")
                     try:
                         from app.services.azure_services import AzureServiceManager
                         fallback_mgr = AzureServiceManager()
@@ -868,16 +886,27 @@ class AzureAIAgentService:
                             "Cite sections explicitly in-line where appropriate. If the context lacks details, say so.\n\n"
                             f"Context:\n{retrieved_context}\n\nUser Question: {question}\n\nAnswer:" 
                         )
-                        resp = await fallback_mgr.openai_client.chat.completions.create(
-                            model=chat_deployment,
-                            messages=[{"role": "user", "content": fallback_prompt}],
-                            temperature=float(model_config.get('temperature') or 0.1),
-                            max_tokens=800
-                        )
+                        
+                        # Handle GPT-5 parameter differences
+                        chat_params = {
+                            "model": chat_deployment,
+                            "messages": [{"role": "user", "content": fallback_prompt}]
+                        }
+                        
+                        if "gpt-5" in chat_deployment.lower():
+                            chat_params["max_completion_tokens"] = 800
+                            # Don't set temperature for GPT-5 (use default of 1)
+                        else:
+                            chat_params["temperature"] = float(model_config.get('temperature') or 0.1)
+                            chat_params["max_tokens"] = 800
+                        
+                        resp = await fallback_mgr.openai_client.chat.completions.create(**chat_params)
                         text = resp.choices[0].message.content if resp and resp.choices else ""
                         # Mutate result to carry fallback answer
                         result.response = text
-                    except Exception as _fallback_err:
+                        logger.info(f"Fallback response generated: {len(text)} characters")
+                    except Exception as fallback_err:
+                        logger.error(f"Fallback response generation failed: {fallback_err}")
                         # Keep empty; upper layer will still return citations
                         pass
                   # Get credibility check setting from context

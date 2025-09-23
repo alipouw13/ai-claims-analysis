@@ -44,6 +44,24 @@ class AdaptiveKnowledgeBaseManager:
         self.update_queue = []
         self.processing_lock = asyncio.Lock()
         
+    def _get_model_params(self, model_name: str, temperature: float = 0.1, max_tokens: int = 1000) -> dict:
+        """
+        Get appropriate model parameters based on model type
+        Handles GPT-5 parameter differences
+        """
+        params = {}
+        
+        if "gpt-5" in model_name.lower():
+            # GPT-5 only supports temperature=1 (default) and max_completion_tokens
+            params["max_completion_tokens"] = max_tokens
+            # Don't set temperature for GPT-5 (use default of 1)
+        else:
+            # Regular models support temperature and max_tokens
+            params["temperature"] = temperature
+            params["max_tokens"] = max_tokens
+            
+        return params
+        
     async def monitor_and_update_knowledge_base(self):
         """
         Main loop for adaptive knowledge base management
@@ -387,8 +405,7 @@ class AdaptiveKnowledgeBaseManager:
             response = await self.azure_manager.openai_client.chat.completions.create(
                 model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT_NAME,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=200
+                **self._get_model_params(settings.AZURE_OPENAI_CHAT_DEPLOYMENT_NAME, temperature=0.1, max_tokens=200)
             )
             
             result = json.loads(response.choices[0].message.content)
@@ -767,8 +784,7 @@ class AdaptiveKnowledgeBaseManager:
             response = await self.azure_manager.openai_client.chat.completions.create(
                 model=model_to_use,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=100
+                **self._get_model_params(model_to_use, temperature=0.1, max_tokens=100)
             )
             
             return response.choices[0].message.content.strip()

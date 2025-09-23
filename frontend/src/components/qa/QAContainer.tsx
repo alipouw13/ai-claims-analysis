@@ -560,9 +560,9 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background w-full">
+    <div className="flex flex-col h-full bg-background w-full">
       {/* Configuration bar at top, full width */}
-      <div className="px-4 pt-3 pb-2 w-full">
+      <div className="px-4 pt-3 pb-2 w-full border-b bg-background/95 backdrop-blur-sm">
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={handleNewSession} className="px-3 py-1 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">New QA Session</button>
           <button onClick={handleToggleAgentStatus} className={`px-3 py-1 text-sm rounded-md hover:opacity-80 ${agentServiceConnected ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-red-100 text-red-800 border border-red-200'}`}>Agent Status</button>
@@ -617,76 +617,81 @@ export const QAContainer: React.FC<QAContainerProps> = ({ modelSettings, domain 
           {showOverallPerformance && (<PerformanceDashboard sessionMetrics={sessionMetrics} isVisible={showOverallPerformance} />)}
           {showQuestionPerformance && selectedQuestionPerformance && (<PerformanceDashboard sessionMetrics={selectedQuestionPerformance} isVisible={showQuestionPerformance} />)}
           {showReasoningChain && selectedReasoningChain && (<ReasoningChainDisplay reasoningChain={selectedReasoningChain} onClose={() => setShowReasoningChain(false)} isVisible={showReasoningChain} />)}
-              </div>
-            </div>
+        </div>
+      </div>
 
-      {/* Full-width Q&A thread */}
-      <div className="flex-1 flex flex-col w-full">
-            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-              <div className="space-y-6">
-                {questions.map((question, index) => {
-                  // Match answers using either the backend question_id or fallback to frontend id
-                  const answer = answers.find(a => 
-                    a.questionId === (question.backendQuestionId || question.id)
-                  );
-                  return (
-                    <div key={question.id} className="space-y-4">
-                      <div className="bg-muted/50 p-4 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-muted-foreground">
-                            Question #{index + 1} • {question.verificationLevel} verification
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {question.timestamp.toLocaleTimeString()}
-                          </span>                        </div>
-                        <p className="text-foreground text-left">{question.question}</p>
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            onClick={() => handleDecomposeQuestion(question.question)}
-                            className="px-2 py-1 text-xs bg-secondary text-secondary-foreground rounded hover:bg-secondary/80"
-                          >
-                            Decompose
-                          </button>
-                        </div>
-                      </div>                        {answer && (
-                        <AnswerDisplay
-                          answer={answer}
-                          onVerifySources={() => handleVerifySources(answer)}
-                          onShowReasoningChain={answer.reasoningChain ? () => handleShowReasoningChain(answer.reasoningChain?.question_id || '') : undefined}
-                          onShowPerformance={answer.questionId ? () => handleShowQuestionPerformance(answer.questionId) : undefined}
-                          onShowEvaluation={answer.metadata.evaluation_id ? () => handleShowEvaluation(String(answer.metadata.evaluation_id || '')) : undefined}
-                          isVerifyingSources={isVerifyingSourcesForAnswer === answer.id}
-                          credibilityCheckEnabled={credibilityCheckEnabled}
-                          evaluationEnabled={evaluationEnabled}
-                          evaluationId={answer.metadata.evaluation_id}
-                        />
-                      )}
+      {/* Main content area with proper flex layout */}
+      <div className="flex-1 flex flex-col min-h-0">
+        {/* Conversation area - takes available space minus question input */}
+        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+          <div className="space-y-6">
+            {questions.map((question, index) => {
+              // Match answers using either the backend question_id or fallback to frontend id
+              const answer = answers.find(a => 
+                a.questionId === (question.backendQuestionId || question.id)
+              );
+              return (
+                <div key={question.id} className="space-y-4">
+                  <div className="bg-muted/50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-muted-foreground">
+                        Question #{index + 1} • {question.verificationLevel} verification
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {question.timestamp.toLocaleTimeString()}
+                      </span>
                     </div>
-                  );
-                })}
-                
-                {isLoading && (
-                  <div className="bg-gradient-to-r from-muted/50 to-muted/30 p-6 rounded-lg border-l-4 border-primary shadow-sm">
-                    <div className="flex items-center space-x-4">
-                      <div className="animate-spin rounded-full h-6 w-6 border-3 border-primary border-t-transparent"></div>
-                      <div className="flex-1">
-                        <p className="text-base font-medium text-foreground">Processing your question...</p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Searching through documents, analyzing context, and generating a comprehensive response
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-4 w-full bg-muted rounded-full h-2">
-                      <div className="bg-primary h-2 rounded-full animate-pulse transition-all duration-300" style={{width: '70%'}}></div>
+                    <p className="text-foreground text-left">{question.question}</p>
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => handleDecomposeQuestion(question.question)}
+                        className="px-2 py-1 text-xs bg-secondary text-secondary-foreground rounded hover:bg-secondary/80"
+                      >
+                        Decompose
+                      </button>
                     </div>
                   </div>
-                )}
+                  {answer && (
+                    <AnswerDisplay
+                      answer={answer}
+                      onVerifySources={() => handleVerifySources(answer)}
+                      onShowReasoningChain={answer.reasoningChain ? () => handleShowReasoningChain(answer.reasoningChain?.question_id || '') : undefined}
+                      onShowPerformance={answer.questionId ? () => handleShowQuestionPerformance(answer.questionId) : undefined}
+                      onShowEvaluation={answer.metadata.evaluation_id ? () => handleShowEvaluation(String(answer.metadata.evaluation_id || '')) : undefined}
+                      isVerifyingSources={isVerifyingSourcesForAnswer === answer.id}
+                      credibilityCheckEnabled={credibilityCheckEnabled}
+                      evaluationEnabled={evaluationEnabled}
+                      evaluationId={answer.metadata.evaluation_id}
+                    />
+                  )}
+                </div>
+              );
+            })}
+            
+            {isLoading && (
+              <div className="bg-gradient-to-r from-muted/50 to-muted/30 p-6 rounded-lg border-l-4 border-primary shadow-sm">
+                <div className="flex items-center space-x-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-3 border-primary border-t-transparent"></div>
+                  <div className="flex-1">
+                    <p className="text-base font-medium text-foreground">Processing your question...</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Searching through documents, analyzing context, and generating a comprehensive response
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 w-full bg-muted rounded-full h-2">
+                  <div className="bg-primary h-2 rounded-full animate-pulse transition-all duration-300" style={{width: '70%'}}></div>
+                </div>
               </div>
-            </ScrollArea>
-              <div className="border-t p-4">
-              <QuestionInput onAskQuestion={handleAskQuestion} disabled={isLoading} domain={domain} />
-            </div>
+            )}
           </div>
+        </ScrollArea>
+        
+        {/* Question input - fixed at bottom, always visible */}
+        <div className="border-t bg-background/95 backdrop-blur-sm p-4">
+          <QuestionInput onAskQuestion={handleAskQuestion} disabled={isLoading} domain={domain} />
+        </div>
+      </div>
       
       {/* Source Verification Modal */}
       <SourceVerification

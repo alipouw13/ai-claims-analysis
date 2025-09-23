@@ -310,16 +310,29 @@ class TraditionalRAGService:
             
             logger.info(f"Calling Azure OpenAI with deployment: {chat_model} (from: {chat_model_full})")
             
-            # Call Azure OpenAI directly
-            response = self.openai_client.chat.completions.create(
-                model=chat_model,
-                messages=[
+            # Prepare chat completion parameters, handling GPT-5 parameter differences
+            chat_params = {
+                "model": chat_model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
-                ],
-                temperature=temperature,
-                max_tokens=4000
-            )
+                ]
+            }
+            
+            # Handle GPT-5 model parameter differences
+            if "gpt-5" in chat_model.lower():
+                # GPT-5 only supports temperature=1 (default) and max_completion_tokens
+                chat_params["max_completion_tokens"] = 4000
+                # Don't set temperature for GPT-5 (use default of 1)
+                logger.info(f"Using GPT-5 parameters: max_completion_tokens=4000, temperature=default(1)")
+            else:
+                # Regular models support temperature and max_tokens
+                chat_params["temperature"] = temperature
+                chat_params["max_tokens"] = 4000
+                logger.info(f"Using standard parameters: temperature={temperature}, max_tokens=4000")
+            
+            # Call Azure OpenAI
+            response = self.openai_client.chat.completions.create(**chat_params)
             
             answer = response.choices[0].message.content
             

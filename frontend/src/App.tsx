@@ -237,8 +237,8 @@ const AppContent = () => {
             <ChatContainer modelSettings={globalModelSettings} role={role} domain={domain} />
           </TabsContent>
           
-          <TabsContent value="qa" className="m-0 bg-background">
-            <div className="p-4 min-h-[70vh]">
+          <TabsContent value="qa" className="m-0 bg-background h-full">
+            <div className="h-[calc(100vh-8rem)] flex flex-col">
               <QAContainer modelSettings={globalModelSettings} domain={domain} />
             </div>
           </TabsContent>

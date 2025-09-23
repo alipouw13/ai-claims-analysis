@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from typing import List, Optional
 import logging
 import uuid
@@ -34,12 +34,21 @@ router = APIRouter()
 ins_router = APIRouter(prefix="/insurance")
 logger = logging.getLogger(__name__)
 
+def get_azure_manager(request: Request) -> AzureServiceManager:
+    """Dependency to get the Azure manager from app state"""
+    azure_manager = getattr(request.app.state, 'azure_manager', None)
+    if not azure_manager:
+        logger.error("Azure manager not found in app state")
+        raise HTTPException(status_code=503, detail="Azure services not available")
+    return azure_manager
+
 @router.post("/ask", response_model=QAResponse)
 async def ask_question(
     request: QARequest,
     x_session_id: Optional[str] = Header(None),
     x_user_id: Optional[str] = Header(None),
-    x_domain: Optional[str] = Header(None)
+    x_domain: Optional[str] = Header(None),
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """Main QA endpoint for complex financial question answering with source verification"""
     start_time = time.time()
@@ -84,10 +93,7 @@ async def ask_question(
                         return model_value
                 return model_value
             
-            logger.info("Initializing Azure services...")
-            azure_manager = AzureServiceManager()
-            await azure_manager.initialize()
-            logger.info("Azure services initialized successfully")
+            logger.info("Using dependency-injected Azure services...")
             
             logger.info("Creating knowledge base manager...")
             from app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
@@ -213,7 +219,12 @@ async def ask_question(
                     question_id=question_id
                 )
             
-            logger.info(f"QA result received: {len(qa_result.get('answer', ''))} characters")
+            logger.info(f"QA result received: answer_length={len(qa_result.get('answer', ''))}, sources_count={len(qa_result.get('sources', []))}")
+            logger.info(f"QA result keys: {list(qa_result.keys())}")
+            if qa_result.get('answer'):
+                logger.info(f"Answer preview: {qa_result.get('answer', '')[:200]}...")
+            else:
+                logger.warning("No answer content found in QA result!")
             
             # Complete search step
             performance_tracker.complete_reasoning_step(
@@ -1085,7 +1096,8 @@ async def get_insurance_qa_capabilities():
 async def ask_insurance_question(
     request: QARequest,
     x_session_id: Optional[str] = Header(None),
-    x_user_id: Optional[str] = Header(None)
+    x_user_id: Optional[str] = Header(None),
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """Insurance QA endpoint using insurance-specific orchestrator and KB manager."""
     start_time = time.time()
@@ -1104,8 +1116,7 @@ async def ask_insurance_question(
         credibility_check_enabled=request.credibility_check_enabled
     )
     try:
-        azure_manager = AzureServiceManager()
-        await azure_manager.initialize()
+        logger.info("Using dependency-injected Azure services for insurance...")
         # Insurance KB manager
         from app.services.knowledge_base_manager_insurance import InsuranceKnowledgeBaseManager
         kb_manager = InsuranceKnowledgeBaseManager(azure_manager)
