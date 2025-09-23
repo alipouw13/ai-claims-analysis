@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import List, Optional, Dict, Any
 import logging
 import psutil
@@ -8,11 +8,20 @@ from datetime import datetime, timedelta
 from app.models.schemas import AdminMetrics, EvaluationResult
 from app.core.observability import observability
 from app.services.token_usage_tracker import TokenUsageTracker, ServiceType, OperationType
+from app.services.azure_services import AzureServiceManager
 # Temporarily disable evaluation due to package conflicts
 # from app.core.evaluation import get_evaluation_framework
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+def get_azure_manager(request: Request) -> AzureServiceManager:
+    """Dependency to get the Azure manager from app state"""
+    azure_manager = getattr(request.app.state, 'azure_manager', None)
+    if not azure_manager:
+        logger.error("Azure manager not found in app state")
+        raise HTTPException(status_code=503, detail="Azure services not available")
+    return azure_manager
 
 @router.get("/metrics")
 async def get_admin_metrics(hours: int = Query(24, ge=1, le=168)):
@@ -235,16 +244,12 @@ async def get_system_health():
         raise HTTPException(status_code=500, detail="Failed to retrieve system health")
 
 @router.get("/foundry/models")
-async def get_foundry_models():
+async def get_foundry_models(azure_manager: AzureServiceManager = Depends(get_azure_manager)):
     """Get available models from Azure AI Foundry project"""
     try:
         observability.track_request("foundry_models")
         
-        from app.services.azure_services import AzureServiceManager
-        azure_service = AzureServiceManager()
-        await azure_service.initialize()
-        
-        models = await azure_service.get_available_models()
+        models = await azure_manager.get_available_models()
         return {
             "models": models,
             "count": len(models),

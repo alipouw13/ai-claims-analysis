@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Request
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 import logging
 from datetime import datetime
 
@@ -17,6 +17,14 @@ from app.core.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+def get_azure_manager(request: Request) -> AzureServiceManager:
+    """Dependency to get the Azure manager from app state"""
+    azure_manager = getattr(request.app.state, 'azure_manager', None)
+    if not azure_manager:
+        logger.error("Azure manager not found in app state")
+        raise HTTPException(status_code=503, detail="Azure services not available")
+    return azure_manager
 
 @router.get("/stats", response_model=KnowledgeBaseStats)
 async def get_knowledge_base_stats(request: Request):
@@ -327,7 +335,7 @@ async def get_recent_policies(limit: int = 10):
         return {"policies": [], "status": "error", "error_message": str(e)}
 
 @router.get("/dashboard-stats")
-async def get_dashboard_stats():
+async def get_dashboard_stats(azure_manager: AzureServiceManager = Depends(get_azure_manager)):
     """Get dashboard statistics for insurance/banking dashboards"""
     try:
         observability.track_request("get_dashboard_stats")
@@ -338,13 +346,6 @@ async def get_dashboard_stats():
                  (settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID and settings.AZURE_CLIENT_SECRET))):
             logger.warning("Azure Search not configured, returning empty stats")
             return {"stats": {}, "status": "azure_not_configured"}
-
-        try:
-            azure_manager = AzureServiceManager()
-            await azure_manager.initialize()
-        except Exception as azure_init_error:
-            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
-            return {"stats": {}, "status": "azure_initialization_failed"}
 
         stats = {}
         
@@ -426,7 +427,7 @@ async def get_dashboard_stats():
         return {"stats": {}, "status": "error", "error_message": str(e)}
 
 @router.get("/banking-dashboard-stats")
-async def get_banking_dashboard_stats():
+async def get_banking_dashboard_stats(azure_manager: AzureServiceManager = Depends(get_azure_manager)):
     """Get dashboard statistics for banking dashboard"""
     try:
         observability.track_request("get_banking_dashboard_stats")
@@ -437,13 +438,6 @@ async def get_banking_dashboard_stats():
                  (settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID and settings.AZURE_CLIENT_SECRET))):
             logger.warning("Azure Search not configured, returning empty banking stats")
             return {"stats": {}, "status": "azure_not_configured"}
-
-        try:
-            azure_manager = AzureServiceManager()
-            await azure_manager.initialize()
-        except Exception as azure_init_error:
-            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
-            return {"stats": {}, "status": "azure_initialization_failed"}
 
         # Get SEC documents from the main financial documents index (same as SEC Document Library)
         # Use the main search client instead of a specific index to match SEC Document Library behavior
@@ -546,7 +540,7 @@ async def get_banking_dashboard_stats():
             return {"stats": stats, "status": "success"}
             
         except Exception as e:
-            logger.warning(f"Error getting banking stats from index '{financial_index}': {e}")
+            logger.warning(f"Error getting banking stats from main index: {e}")
             return {"stats": {}, "status": "index_error", "error_message": str(e)}
             
     except Exception as e:
@@ -739,7 +733,8 @@ async def get_conflicts(
     status: Optional[str] = None,
     document_id: Optional[str] = None,
     limit: int = 50,
-    offset: int = 0
+    offset: int = 0,
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """Get knowledge base conflicts"""
     try:
@@ -818,7 +813,7 @@ async def resolve_conflict(conflict_id: str, status: str):
         }
 
 @router.get("/metrics")
-async def get_knowledge_base_metrics(index: Optional[str] = None):
+async def get_knowledge_base_metrics(index: Optional[str] = None, azure_manager: AzureServiceManager = Depends(get_azure_manager)):
     """Get knowledge base metrics and analytics for policy/claims indexes.
 
     If index is provided ('policy' or 'claims'), compute metrics from that index only.
@@ -844,21 +839,7 @@ async def get_knowledge_base_metrics(index: Optional[str] = None):
                 "status": "azure_not_configured"
             }
 
-        try:
-            azure_manager = AzureServiceManager()
-            await azure_manager.initialize()
-        except Exception as azure_init_error:
-            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
-            return {
-                "total_documents": 0,
-                "total_chunks": 0,
-                "active_conflicts": 0,
-                "processing_rate": 0,
-                "documents_by_type": {},
-                "processing_queue_size": 0,
-                "last_updated": datetime.utcnow().isoformat(),
-                "status": "azure_initialization_failed"
-            }
+        # Now we can directly use azure_manager since it's injected
 
         # Resolve which indexes to include
         ix_list = []

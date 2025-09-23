@@ -208,6 +208,11 @@ class AzureServiceManager:
         self.credential = None
         self.storage_manager = None
         
+        # Cache for expensive operations
+        self._models_cache = None
+        self._models_cache_time = None
+        self._cache_ttl = 300  # 5 minutes
+        
     async def initialize(self):
         """Initialize all Azure services"""
         try:
@@ -1149,7 +1154,17 @@ class AzureServiceManager:
             return []
 
     async def get_available_models(self) -> List[Dict[str, Any]]:
-        """Retrieve available model deployments from Azure AI Foundry project"""
+        """Retrieve available model deployments from Azure AI Foundry project with caching"""
+        import time
+        
+        # Check cache first
+        current_time = time.time()
+        if (self._models_cache is not None and 
+            self._models_cache_time is not None and 
+            current_time - self._models_cache_time < self._cache_ttl):
+            logger.debug("Returning cached models")
+            return self._models_cache
+        
         try:
             # with observability.trace_operation("azure_get_available_models") as span:
             if not self.project_client:
@@ -1191,6 +1206,10 @@ class AzureServiceManager:
             
             logger.info(f"Returning {len(unique_models)} unique models (removed {len(models) - len(unique_models)} duplicates)")
             
+            # Cache the result
+            self._models_cache = unique_models
+            self._models_cache_time = current_time
+            
             # span.set_attribute("models_count", len(unique_models))
             # span.set_attribute("success", True)
             return unique_models
@@ -1198,6 +1217,10 @@ class AzureServiceManager:
         except Exception as e:
             logger.error(f"Failed to retrieve available models: {e}")
             observability.record_error("azure_get_models_error", str(e))
+            # Return cached result if available, otherwise mock models
+            if self._models_cache is not None:
+                logger.info("Returning cached models due to error")
+                return self._models_cache
             return self._get_mock_models()
     
     def _get_mock_models(self) -> List[Dict[str, Any]]:
@@ -1455,20 +1478,24 @@ class AzureServiceManager:
         url = f"{endpoint}/openai/deployments?api-version={api_version}"
         headers = {"api-key": settings.AZURE_OPENAI_API_KEY}
         deployments: List[Dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-            items = data.get("data") or data.get("value") or []
-            for d in items:
-                dep_name = d.get("id") or d.get("name") or d.get("deployment_name")
-                model_name = (d.get("model") or d.get("model_name") or "").lower()
-                mtype = self._classify_model_type(model_name)
-                entry: Dict[str, Any] = {
-                    "id": dep_name,
-                    "name": dep_name,
-                    "deployment_name": dep_name,
-                    "model_name": model_name,
+        
+        # Use proper session management to prevent leaks
+        timeout = httpx.Timeout(30.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                items = data.get("data") or data.get("value") or []
+                for d in items:
+                    dep_name = d.get("id") or d.get("name") or d.get("deployment_name")
+                    model_name = (d.get("model") or d.get("model_name") or "").lower()
+                    mtype = self._classify_model_type(model_name)
+                    entry: Dict[str, Any] = {
+                        "id": dep_name,
+                        "name": dep_name,
+                        "deployment_name": dep_name,
+                        "model_name": model_name,
                     "type": mtype,
                     "status": d.get("status") or "active",
                     "provider": "Azure OpenAI",
@@ -1478,6 +1505,8 @@ class AzureServiceManager:
                 if mtype == "embedding":
                     entry["dimensions"] = self._infer_embedding_dimensions(model_name)
                 deployments.append(entry)
+            except Exception as e:
+                logger.warning(f"Failed to get inference endpoint deployments: {e}")
         return deployments
 
     def _classify_model_type(self, model_name: str) -> str:
