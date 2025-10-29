@@ -74,6 +74,7 @@ class SECDocumentService:
             "u.s. bancorp": "USB", "us bancorp": "USB", "usb": "USB",
             "truist": "TFC", "truist financial": "TFC", "tfc": "TFC",
             "charles schwab": "SCHW", "schwab": "SCHW", "schw": "SCHW",
+            "alliance bernstein": "AB", "alliancebernstein": "AB", "ab": "AB",
 
             # Insurance (common in policy datasets)
             "progressive": "PGR", "allstate": "ALL", "geico": "BRK.B", "berkshire hathaway": "BRK.B", "brk.b": "BRK.B", "brk b": "BRK.B",

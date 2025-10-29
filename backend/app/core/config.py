@@ -93,12 +93,22 @@ class Settings(BaseSettings):
     AZURE_COSMOS_EVALUATION_CONTAINER_NAME: str = os.getenv("AZURE_COSMOS_EVALUATION_CONTAINER_NAME", "evaluation-results")
     AZURE_COSMOS_TOKEN_USAGE_CONTAINER_NAME: str = os.getenv("AZURE_COSMOS_TOKEN_USAGE_CONTAINER_NAME", "token-usage")
     
-    AZURE_FORM_RECOGNIZER_ENDPOINT: str = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "") or os.getenv("AZURE_FORM_RECOGNIZER_ENDPOINT", "")
+    AZURE_FORM_RECOGNIZER_ENDPOINT: str = os.getenv("AZURE_FORM_RECOGNIZER_ENDPOINT", "")
     
     AZURE_AI_FOUNDRY_PROJECT_NAME: str = os.getenv("AZURE_AI_FOUNDRY_PROJECT_NAME", "")
     AZURE_AI_FOUNDRY_RESOURCE_GROUP: str = os.getenv("AZURE_AI_FOUNDRY_RESOURCE_GROUP", "")
     AZURE_SUBSCRIPTION_ID: str = os.getenv("AZURE_SUBSCRIPTION_ID", "")
+    
+    # Azure AI Foundry Evaluation Configuration
+    AZURE_AI_FOUNDRY_EVALUATION_ENABLED: bool = os.getenv("AZURE_AI_FOUNDRY_EVALUATION_ENABLED", "false").lower() == "true"
+    EVALUATION_FRAMEWORK_TYPE: str = os.getenv("EVALUATION_FRAMEWORK_TYPE", "custom")
+    AZURE_AI_FOUNDRY_PROJECT_CONNECTION_STRING: str = os.getenv("AZURE_AI_FOUNDRY_PROJECT_CONNECTION_STRING", "")
+    AZURE_AI_FOUNDRY_EVALUATOR_MODEL: str = os.getenv("AZURE_AI_FOUNDRY_EVALUATOR_MODEL", "gpt-4.1-mini")
     AZURE_AI_FOUNDRY_WORKSPACE_NAME: str = os.getenv("AZURE_AI_FOUNDRY_WORKSPACE_NAME", "")
+    
+    # Azure AI Project Configuration (for Azure AI Foundry portal logging)
+    AZURE_RESOURCE_GROUP: str = os.getenv("AZURE_RESOURCE_GROUP", "")
+    AZURE_AI_PROJECT_NAME: str = os.getenv("AZURE_AI_PROJECT_NAME", "")
     # Support multiple aliases for AI Foundry endpoint to avoid configuration mismatches
     _EP_ENV = (
         os.getenv("AZURE_AI_PROJECT_ENDPOINT")
@@ -190,6 +200,7 @@ class Settings(BaseSettings):
     
     # Additional constants (not environment-configurable)
     MAX_TOKENS_PER_REQUEST: int = 4000
+    MAX_CHUNK_SIZE: int = int(os.getenv("MAX_CHUNK_SIZE", "2000"))  # Missing config for evaluation framework
     TEMPERATURE: float = 0.1
     
     AUTO_UPDATE_ENABLED: bool = True

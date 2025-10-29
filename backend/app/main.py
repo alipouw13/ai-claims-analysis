@@ -39,7 +39,8 @@ from app.services.bootstrap_vectorization import bootstrap_policy_claims_vectori
 from app.core.observability import observability, setup_fastapi_instrumentation
 from app.core.tracing import setup_ai_foundry_tracing
 # Temporarily disable evaluation due to package conflicts
-# from app.core.evaluation import setup_evaluation_framework
+from app.core.evaluation import setup_evaluation_framework, EvaluationFrameworkType
+from app.core.azure_ai_foundry_evaluators import AzureEvaluationConfig
 
 load_dotenv()
 
@@ -51,8 +52,7 @@ async def lifespan(app: FastAPI):
     
     # Initialize Azure AI Foundry tracing
     logger.info("🔍 Setting up Azure AI Foundry tracing...")
-    #tracing_success = setup_ai_foundry_tracing()
-    tracing_success = False
+    tracing_success = setup_ai_foundry_tracing()
     if tracing_success:
         logger.info("✅ Azure AI Foundry tracing enabled - traces will be visible in AI Foundry portal")
     else:
@@ -82,12 +82,38 @@ async def lifespan(app: FastAPI):
             logger.warning("This is not critical - the system will still work for uploads")
         
         if hasattr(azure_manager, 'openai_client'):
-            # Temporarily disable evaluation due to package conflicts
-            # setup_evaluation_framework(
-            #     azure_openai_client=azure_manager.openai_client,
-            #     cosmos_client=getattr(azure_manager, 'cosmos_client', None)
-            # )
-            logger.info("Evaluation framework disabled due to package conflicts")
+            # Setup Azure AI Foundry evaluation framework
+            try:
+                framework_type_str = os.getenv("EVALUATION_FRAMEWORK_TYPE", "custom")
+                if framework_type_str == "azure_ai_foundry":
+                    framework_type = EvaluationFrameworkType.AZURE_AI_FOUNDRY
+                elif framework_type_str == "hybrid":
+                    framework_type = EvaluationFrameworkType.HYBRID
+                else:
+                    framework_type = EvaluationFrameworkType.CUSTOM
+                
+                azure_config = None
+                if framework_type in [EvaluationFrameworkType.AZURE_AI_FOUNDRY, EvaluationFrameworkType.HYBRID]:
+                    azure_config = AzureEvaluationConfig(
+                        project_connection_string=os.getenv("AZURE_AI_FOUNDRY_PROJECT_CONNECTION_STRING"),
+                        model_config={
+                            "azure_endpoint": settings.AZURE_OPENAI_ENDPOINT,
+                            "api_key": settings.AZURE_OPENAI_API_KEY,
+                            "azure_deployment": settings.AZURE_OPENAI_CHAT_DEPLOYMENT_NAME,
+                            "api_version": settings.AZURE_OPENAI_API_VERSION
+                        }
+                    )
+                
+                setup_evaluation_framework(
+                    azure_openai_client=azure_manager.openai_client,
+                    cosmos_client=getattr(azure_manager, 'cosmos_client', None),
+                    framework_type=framework_type,
+                    azure_config=azure_config
+                )
+                logger.info(f"✅ Evaluation framework initialized with type: {framework_type.value}")
+            except Exception as eval_error:
+                logger.warning(f"⚠️ Evaluation framework setup failed: {eval_error}")
+                logger.info("Continuing without evaluation framework")
         
         # Warm up Azure AI Agents: ensure a default agent exists to avoid 404 at runtime
         try:

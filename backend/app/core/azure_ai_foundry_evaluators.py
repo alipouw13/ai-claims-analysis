@@ -14,12 +14,13 @@ try:
         CoherenceEvaluator,
         FluencyEvaluator,
         RetrievalEvaluator,
+        AzureOpenAIModelConfiguration,
         evaluate
     )
     AZURE_AI_FOUNDRY_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     AZURE_AI_FOUNDRY_AVAILABLE = False
-    logging.warning("Azure AI Foundry packages not available. Using mock implementations.")
+    logging.warning(f"Azure AI Foundry packages not available: {e}. Using mock implementations.")
 
 from app.models.evaluation import EvaluationResult, FinancialEvaluationContext, EvaluationMetric
 
@@ -86,16 +87,30 @@ class AzureAIFoundryEvaluator:
             return
             
         try:
+            # Initialize project client using endpoint
             if self.config.project_connection_string:
-                self.project_client = AIProjectClient.from_connection_string(
-                    self.config.project_connection_string
-                )
+                endpoint = self.config.project_connection_string
+                if endpoint.startswith("https://"):
+                    from azure.identity import DefaultAzureCredential
+                    self.project_client = AIProjectClient(
+                        endpoint=endpoint,
+                        credential=DefaultAzureCredential()
+                    )
+                    logger.info(f"Azure AI Foundry project client initialized for endpoint: {endpoint}")
+                else:
+                    logger.warning("Invalid project connection string format, skipping project client initialization")
                 
-            model_config = self.config.model_config or {
-                "azure_endpoint": "https://your-endpoint.openai.azure.com/",
-                "api_key": "your-api-key",
-                "azure_deployment": "gpt-4"
-            }
+            # Configure model config according to Azure AI Evaluation SDK documentation
+            from azure.ai.evaluation import AzureOpenAIModelConfiguration
+            import os
+            
+            # Use the configured evaluation model settings
+            model_config = AzureOpenAIModelConfiguration(
+                azure_endpoint=os.environ.get("AZURE_OPENAI_ENDPOINT"),
+                api_key=os.environ.get("AZURE_OPENAI_API_KEY"),
+                azure_deployment=os.environ.get("AZURE_AI_FOUNDRY_EVALUATOR_MODEL", "gpt-4.1-mini"),
+                api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+            )
             
             enabled_evaluators = self.config.enabled_evaluators or [
                 AzureEvaluatorType.GROUNDEDNESS,
@@ -104,20 +119,30 @@ class AzureAIFoundryEvaluator:
                 AzureEvaluatorType.FLUENCY
             ]
             
+            # Initialize evaluators with proper model configuration
             for evaluator_type in enabled_evaluators:
                 if evaluator_type == AzureEvaluatorType.GROUNDEDNESS:
                     self.evaluators[evaluator_type] = GroundednessEvaluator(model_config)
+                    logger.info("GroundednessEvaluator initialized")
                 elif evaluator_type == AzureEvaluatorType.RELEVANCE:
                     self.evaluators[evaluator_type] = RelevanceEvaluator(model_config)
+                    logger.info("RelevanceEvaluator initialized")
                 elif evaluator_type == AzureEvaluatorType.COHERENCE:
                     self.evaluators[evaluator_type] = CoherenceEvaluator(model_config)
+                    logger.info("CoherenceEvaluator initialized")
                 elif evaluator_type == AzureEvaluatorType.FLUENCY:
                     self.evaluators[evaluator_type] = FluencyEvaluator(model_config)
+                    logger.info("FluencyEvaluator initialized")
                 elif evaluator_type == AzureEvaluatorType.RETRIEVAL:
                     self.evaluators[evaluator_type] = RetrievalEvaluator(model_config)
+                    logger.info("RetrievalEvaluator initialized")
+                    
+            logger.info(f"Azure AI Foundry evaluators initialized successfully: {list(self.evaluators.keys())}")
                     
         except Exception as e:
             logger.error(f"Failed to initialize Azure AI Foundry evaluators: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             self._initialize_mock_evaluators()
             
     def _initialize_mock_evaluators(self):
@@ -177,33 +202,63 @@ class AzureAIFoundryEvaluator:
         
         evaluator = self.evaluators[evaluator_type]
         
+        # Prepare evaluation parameters according to Azure AI Evaluation SDK format
         eval_params = {
-            "response": context.response,
-            "query": context.query
+            "query": context.query,
+            "response": context.response
         }
         
+        # Add context for evaluators that need it
         if evaluator_type in [AzureEvaluatorType.GROUNDEDNESS, AzureEvaluatorType.RETRIEVAL]:
             eval_params["context"] = "\n".join([
                 source.get("content", "") for source in context.sources
             ])
             
-        result = await evaluator.evaluate(**eval_params)
-        
-        score = result.get("score", result.get(evaluator_type.value, 0.0))
-        reasoning = result.get("reasoning", f"Azure AI Foundry {evaluator_type.value} evaluation")
-        
-        return EvaluationResult(
-            metric=evaluator_type.value,
-            score=float(score),
-            reasoning=reasoning,
-            timestamp=datetime.utcnow(),
-            session_id=session_id,
-            query=context.query,
-            response=context.response,
-            sources=[s.get("source", "") for s in context.sources],
-            model_used=model_used,
-            metadata=result
-        )
+        try:
+            # Call the evaluator (Azure AI Evaluation SDK evaluators are synchronous)
+            import asyncio
+            result = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: evaluator(**eval_params)
+            )
+            
+            # Extract score - Azure AI evaluators return different formats
+            score = 0.0
+            reasoning = f"Azure AI Foundry {evaluator_type.value} evaluation"
+            
+            if isinstance(result, dict):
+                # Try different score field names based on the evaluator type
+                score = (
+                    result.get("score") or
+                    result.get(evaluator_type.value) or  
+                    result.get(f"gpt_{evaluator_type.value}") or
+                    result.get(f"{evaluator_type.value}_score") or
+                    0.0
+                )
+                reasoning = result.get("reason") or result.get("reasoning") or reasoning
+            else:
+                # Some evaluators might return a simple score
+                score = float(result) if result is not None else 0.0
+            
+            logger.info(f"Azure AI Foundry {evaluator_type.value} evaluation completed with score: {score}")
+            
+            return EvaluationResult(
+                metric=evaluator_type.value,
+                score=float(score),
+                reasoning=reasoning,
+                timestamp=datetime.utcnow(),
+                session_id=session_id,
+                query=context.query,
+                response=context.response,
+                sources=[s.get("source", "") for s in context.sources],
+                model_used=model_used,
+                metadata=result if isinstance(result, dict) else {"score": score}
+            )
+            
+        except Exception as e:
+            logger.error(f"Error during {evaluator_type.value} evaluation: {e}")
+            import traceback
+            logger.error(f"Evaluation traceback: {traceback.format_exc()}")
+            raise
         
     def _create_error_result(
         self,
@@ -244,10 +299,18 @@ class AzureAIFoundryAgentEvaluator:
             return
             
         try:
+            # Initialize project client using endpoint (connection string format: endpoint)
             if self.config.project_connection_string:
-                self.project_client = AIProjectClient.from_connection_string(
-                    self.config.project_connection_string
-                )
+                # Extract endpoint from connection string (assuming it's just the endpoint URL)
+                endpoint = self.config.project_connection_string
+                if endpoint.startswith("https://"):
+                    from azure.identity import DefaultAzureCredential
+                    self.project_client = AIProjectClient(
+                        endpoint=endpoint,
+                        credential=DefaultAzureCredential()
+                    )
+                else:
+                    logger.warning("Invalid project connection string format, skipping project client initialization")
                 
             model_config = self.config.model_config or {
                 "azure_endpoint": "https://your-endpoint.openai.azure.com/",

@@ -213,6 +213,131 @@ async def get_evaluation_analytics(
         logger.error(f"Error getting evaluation analytics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/evaluate/foundry", response_model=List[EvaluationResult])
+async def evaluate_with_azure_ai_foundry(
+    request: EvaluationRequest,
+    app_request: Request,
+    background: bool = Query(False, description="Run evaluation in background")
+):
+    """
+    Evaluate a QA answer specifically using Azure AI Foundry evaluators.
+    
+    This endpoint uses Azure AI Foundry's built-in evaluators for:
+    - Groundedness
+    - Relevance  
+    - Coherence
+    - Fluency
+    - Agent-specific metrics (if applicable)
+    """
+    try:
+        # Force evaluator type to foundry
+        request.evaluator_type = EvaluatorType.foundry
+        
+        logger.info(f"Received Azure AI Foundry evaluation request for question_id: {request.question_id}")
+        
+        # Get azure_manager from app state
+        azure_manager = getattr(app_request.app.state, 'azure_manager', None)
+        if not azure_manager:
+            raise HTTPException(status_code=500, detail="Azure services not initialized")
+        
+        # Get evaluation framework
+        try:
+            from app.core.evaluation import get_evaluation_framework
+            evaluation_framework = get_evaluation_framework()
+            
+            # Prepare evaluation context
+            from app.models.evaluation import FinancialEvaluationContext
+            
+            context = FinancialEvaluationContext(
+                query=request.question,
+                response=request.answer,
+                sources=request.context or [],
+                document_types=["financial"],
+                financial_context={"session_id": request.session_id}
+            )
+            
+            # Run Azure AI Foundry evaluation
+            results = await evaluation_framework.evaluate_response(
+                query=request.question,
+                response=request.answer,
+                sources=request.context or [],
+                session_id=request.session_id,
+                model_used=request.evaluation_model or "gpt-4.1-mini",
+                response_time=0.0,  # Not measured in this context
+                ground_truth=request.ground_truth,
+                financial_context={"session_id": request.session_id}
+            )
+            
+            logger.info(f"Azure AI Foundry evaluation completed for question_id: {request.question_id}, got {len(results)} results")
+            return results
+            
+        except Exception as eval_error:
+            logger.error(f"Azure AI Foundry evaluation framework error: {eval_error}")
+            raise HTTPException(status_code=500, detail=f"Evaluation framework error: {str(eval_error)}")
+        
+    except Exception as e:
+        logger.error(f"Error in Azure AI Foundry evaluation endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/foundry/status", response_model=Dict[str, Any])
+async def get_foundry_evaluation_status():
+    """
+    Get the status of Azure AI Foundry evaluation configuration
+    """
+    try:
+        from app.core.evaluation import get_evaluation_framework
+        from app.core.config import settings
+        
+        # Check environment configuration
+        env_config = {
+            "AZURE_AI_FOUNDRY_EVALUATION_ENABLED": settings.AZURE_AI_FOUNDRY_EVALUATION_ENABLED,
+            "EVALUATION_FRAMEWORK_TYPE": settings.EVALUATION_FRAMEWORK_TYPE,
+            "AZURE_AI_FOUNDRY_PROJECT_CONNECTION_STRING_SET": bool(settings.AZURE_AI_FOUNDRY_PROJECT_CONNECTION_STRING),
+            "AZURE_AI_FOUNDRY_EVALUATOR_MODEL": settings.AZURE_AI_FOUNDRY_EVALUATOR_MODEL
+        }
+        
+        try:
+            evaluation_framework = get_evaluation_framework()
+            framework_type = evaluation_framework.framework_type.value
+            azure_config_status = "configured" if evaluation_framework.azure_ai_foundry_evaluator else "not_configured"
+            
+            return {
+                "status": "available",
+                "framework_type": framework_type,
+                "azure_ai_foundry_configured": azure_config_status == "configured",
+                "environment_config": env_config,
+                "available_evaluators": [
+                    "groundedness",
+                    "relevance", 
+                    "coherence",
+                    "fluency",
+                    "retrieval"
+                ],
+                "agent_evaluators": [
+                    "intent_resolution",
+                    "tool_call_accuracy", 
+                    "task_adherence"
+                ],
+                "framework_details": {
+                    "type": framework_type,
+                    "azure_evaluator_initialized": evaluation_framework.azure_ai_foundry_evaluator is not None,
+                    "azure_agent_evaluator_initialized": evaluation_framework.azure_ai_foundry_agent_evaluator is not None
+                }
+            }
+        except RuntimeError as e:
+            return {
+                "status": "not_initialized",
+                "framework_type": "unknown", 
+                "azure_ai_foundry_configured": False,
+                "environment_config": env_config,
+                "error": f"Evaluation framework not initialized: {str(e)}",
+                "recommendation": "Check that evaluation framework is properly set up in main.py"
+            }
+        
+    except Exception as e:
+        logger.error(f"Error getting foundry status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.delete("/results/session/{session_id}")
 async def delete_evaluation_results(
     session_id: str = Path(..., description="Session ID")

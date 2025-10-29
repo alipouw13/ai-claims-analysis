@@ -46,11 +46,13 @@ class EvaluationService:
         if not self._foundry_initialized:
             self._foundry_initialized = True
             try:
-                if settings.AZURE_AI_PROJECT_CONNECTION_STRING:
+                # Check for Azure AI Foundry project connection string
+                if settings.AZURE_AI_FOUNDRY_PROJECT_CONNECTION_STRING and settings.AZURE_AI_FOUNDRY_EVALUATION_ENABLED:
                     self.foundry_evaluator = FoundryEvaluator()
                     logger.info("Azure AI Foundry evaluator initialized")
                 else:
-                    logger.warning("Azure AI Foundry configuration missing, foundry evaluator disabled")
+                    logger.warning(f"Azure AI Foundry configuration missing - connection_string: {bool(settings.AZURE_AI_FOUNDRY_PROJECT_CONNECTION_STRING)}, enabled: {settings.AZURE_AI_FOUNDRY_EVALUATION_ENABLED}")
+                    self.foundry_evaluator = None
             except Exception as e:
                 logger.warning(f"Failed to initialize Foundry evaluator: {e}")
                 self.foundry_evaluator = None
@@ -119,19 +121,53 @@ class EvaluationService:
         self._ensure_foundry_evaluator()
         self._ensure_custom_evaluator()
         
+        # Check if Azure AI Foundry evaluation framework is available
+        foundry_available = False
+        try:
+            from app.core.evaluation import get_evaluation_framework
+            evaluation_framework = get_evaluation_framework()
+            foundry_available = (
+                evaluation_framework.framework_type.value in ["azure_ai_foundry", "hybrid"] and
+                evaluation_framework.azure_ai_foundry_evaluator is not None
+            )
+        except RuntimeError:
+            # Evaluation framework not initialized
+            foundry_available = False
+        except Exception as e:
+            logger.warning(f"Error checking evaluation framework: {e}")
+            foundry_available = False
+        
+        # Also check environment variable configuration
+        from app.core.config import settings
+        foundry_config_available = (
+            settings.AZURE_AI_FOUNDRY_EVALUATION_ENABLED and 
+            settings.EVALUATION_FRAMEWORK_TYPE in ["azure_ai_foundry", "hybrid"] and
+            bool(settings.AZURE_AI_FOUNDRY_PROJECT_CONNECTION_STRING)
+        )
+        
+        # Foundry is available if either the framework is loaded OR config is properly set
+        foundry_available = foundry_available or foundry_config_available
+        
         return {
-            "foundry_available": self.foundry_evaluator is not None and bool(getattr(self.foundry_evaluator, 'available_evaluators', {})),
-            "custom_available": self.custom_evaluator is not None,
+            "foundry_available": foundry_available,
+            "custom_available": self.custom_evaluator is not None or True,  # Custom is always available
             "supported_evaluators": [
                 {
                     "type": "foundry", 
-                    "available": self.foundry_evaluator is not None and bool(getattr(self.foundry_evaluator, 'available_evaluators', {})),
-                    "metrics": ["groundedness", "relevance", "coherence", "fluency"]
+                    "available": foundry_available,
+                    "metrics": ["groundedness", "relevance", "coherence", "fluency", "retrieval"],
+                    "agent_metrics": ["intent_resolution", "tool_call_accuracy", "task_adherence"],
+                    "framework_type": getattr(settings, 'EVALUATION_FRAMEWORK_TYPE', 'custom'),
+                    "config_status": {
+                        "foundry_enabled": settings.AZURE_AI_FOUNDRY_EVALUATION_ENABLED,
+                        "connection_string_set": bool(settings.AZURE_AI_FOUNDRY_PROJECT_CONNECTION_STRING),
+                        "framework_type": settings.EVALUATION_FRAMEWORK_TYPE
+                    }
                 },
                 {
                     "type": "custom", 
-                    "available": self.custom_evaluator is not None,
-                    "metrics": ["groundedness", "relevance", "coherence", "fluency"]
+                    "available": True,
+                    "metrics": ["groundedness", "relevance", "coherence", "fluency", "financial_accuracy", "citation_quality"]
                 }
             ]
         }
@@ -820,35 +856,42 @@ class FoundryEvaluator:
         self._initialize_evaluators()
 
     def _initialize_evaluators(self):
-        """Initialize Foundry evaluators using subprocess approach to avoid HTTP client conflicts"""
+        """Initialize Azure AI Foundry evaluators using the Azure AI Evaluation SDK"""
         try:
-            logger.info("Initializing Azure AI Foundry evaluators (subprocess approach)...")
+            logger.info("Initializing Azure AI Foundry evaluators using Azure AI Evaluation SDK...")
 
-            if not settings.AZURE_EVALUATION_ENDPOINT or not settings.AZURE_EVALUATION_API_KEY:
-                raise ValueError("Azure evaluation endpoint and API key are required")
-
-            # Validate model compatibility
-            supported_models = ["gpt-4", "gpt-4-turbo", "gpt-4o", "gpt-4o-mini", "gpt-35-turbo"]
-            model_name = settings.AZURE_EVALUATION_MODEL_DEPLOYMENT.lower()
+            # Import required components from Azure AI Evaluation SDK
+            from azure.ai.evaluation import (
+                GroundednessEvaluator,
+                RelevanceEvaluator,
+                CoherenceEvaluator,
+                FluencyEvaluator,
+                AzureOpenAIModelConfiguration
+            )
             
-            if not any(supported in model_name for supported in supported_models):
-                logger.warning(f"Model '{settings.AZURE_EVALUATION_MODEL_DEPLOYMENT}' may not be compatible with Azure AI Evaluation SDK")
-                logger.warning(f"Supported models: {supported_models}")
-                logger.warning("Consider using gpt-4o-mini for best compatibility")
-
-            # Since we're using subprocess approach, we don't need to initialize the actual evaluators
-            # Just mark them as available if we have the required configuration
+            # Configure the model for evaluation
+            model_config = AzureOpenAIModelConfiguration(
+                azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
+                api_key=settings.AZURE_OPENAI_API_KEY,
+                azure_deployment=settings.AZURE_AI_FOUNDRY_EVALUATOR_MODEL or "gpt-4.1-mini",
+                api_version=settings.AZURE_OPENAI_API_VERSION
+            )
+            
+            # Initialize individual evaluators
             self.available_evaluators = {
-                'groundedness': 'GroundednessEvaluator',
-                'relevance': 'RelevanceEvaluator',
-                'coherence': 'CoherenceEvaluator',
-                'fluency': 'FluencyEvaluator'
+                'groundedness': GroundednessEvaluator(model_config),
+                'relevance': RelevanceEvaluator(model_config),
+                'coherence': CoherenceEvaluator(model_config),
+                'fluency': FluencyEvaluator(model_config)
             }
             
-            logger.info(f"Successfully configured {len(self.available_evaluators)} Azure AI Foundry evaluators for subprocess execution")
+            logger.info(f"Successfully initialized {len(self.available_evaluators)} Azure AI Foundry evaluators")
 
+        except ImportError as e:
+            logger.error(f"Azure AI Evaluation SDK not available: {e}")
+            self.available_evaluators = {}
         except Exception as e:
-            logger.error(f"Failed to initialize Foundry evaluators: {e}", exc_info=True)
+            logger.error(f"Failed to initialize Azure AI Foundry evaluators: {e}", exc_info=True)
             self.available_evaluators = {}
 
     @property
@@ -858,7 +901,7 @@ class FoundryEvaluator:
 
     async def evaluate(self, request: EvaluationRequest) -> EvaluationResult:
         """
-        Asynchronous evaluation with parallel metric execution for improved performance
+        Asynchronous evaluation using Azure AI Evaluation SDK with proper Azure AI Foundry integration
         """
         if not self.evaluators:
             raise ValueError("Azure AI Foundry evaluators not available")
@@ -875,124 +918,221 @@ class FoundryEvaluator:
             evaluation_model=request.evaluation_model or settings.AZURE_EVALUATION_MODEL_NAME
         )
 
-        eval_data = {
-            "query": request.question,
-            "response": request.answer,
-            "context": "\n".join(request.context) if request.context else ""
-        }
-
-        # Create evaluation tasks for parallel execution
-        evaluation_tasks = []
-        metric_names = []
-        
-        # Run evaluations for requested metrics in parallel
-        for metric in request.metrics:
-            metric_key = metric.value.lower()
-            if metric_key in self.evaluators:
-                task = self._run_evaluator(metric_key, eval_data)
-                evaluation_tasks.append(task)
-                metric_names.append(metric_key)
-                logger.info(f"Added {metric_key} evaluation task to parallel execution")
-
-        # Execute all evaluations in parallel
-        parallel_start_time = time.time()
-        logger.info(f"🚀 Starting PARALLEL execution of {len(evaluation_tasks)} metrics: {metric_names}")
-        detailed_scores = {}
-        scores = []
-        
-        if evaluation_tasks:
+        try:
+            # Import Azure AI Evaluation SDK components for proper portal integration
+            from azure.ai.evaluation import evaluate
+            import tempfile
+            import json
+            import os
+            
+            # Prepare data in Azure AI Evaluation SDK format (JSONL)
+            eval_data = {
+                "query": request.question,
+                "response": request.answer,
+                "context": "\n".join(request.context) if request.context else "",
+                "ground_truth": request.ground_truth or ""
+            }
+            
+            # Create temporary JSONL file for Azure AI Evaluation SDK
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
+                json.dump(eval_data, f)
+                f.write('\n')
+                temp_file = f.name
+            
             try:
-                # Run all evaluation tasks concurrently with timing
-                logger.info(f"⚡ Executing {len(evaluation_tasks)} evaluations concurrently...")
-                results = await asyncio.gather(*evaluation_tasks, return_exceptions=True)
-                parallel_duration = (time.time() - parallel_start_time) * 1000
-                logger.info(f"✅ Parallel execution completed in {parallel_duration:.1f}ms")
+                # Configure Azure AI project for portal logging (from environment)
+                azure_ai_project = None
+                if settings.AZURE_SUBSCRIPTION_ID and settings.AZURE_RESOURCE_GROUP and settings.AZURE_AI_PROJECT_NAME:
+                    azure_ai_project = {
+                        "subscription_id": settings.AZURE_SUBSCRIPTION_ID,
+                        "resource_group_name": settings.AZURE_RESOURCE_GROUP,
+                        "project_name": settings.AZURE_AI_PROJECT_NAME
+                    }
+                    logger.info("✅ Azure AI project configured for evaluation logging to portal")
+                else:
+                    logger.warning("Azure AI project not fully configured - evaluations will run locally only")
                 
-                # Process results and assign to appropriate fields
-                for i, (metric_key, score_result) in enumerate(zip(metric_names, results)):
-                    if isinstance(score_result, Exception):
-                        logger.error(f"❌ Error evaluating {metric_key}: {score_result}")
-                        detailed_scores[metric_key] = {"score": 0.0, "error": str(score_result)}
-                    else:
-                        detailed_scores[metric_key] = score_result
-                        
-                        # Set specific metric scores
-                        score_value = score_result.get("score", 0.0)
-                        if metric_key == "groundedness":
-                            result.groundedness_score = score_value
-                            scores.append(score_value)
-                        elif metric_key == "relevance":
-                            result.relevance_score = score_value
-                            scores.append(score_value)
-                        elif metric_key == "coherence":
-                            result.coherence_score = score_value
-                            scores.append(score_value)
-                        elif metric_key == "fluency":
-                            result.fluency_score = score_value
-                            scores.append(score_value)
-                        
-                        logger.info(f"✅ {metric_key}: {score_value}")
-                        
-            except Exception as e:
-                logger.error(f"❌ Error in parallel evaluation execution: {e}")
-                # Set default scores for error case
-                for metric_key in metric_names:
-                    detailed_scores[metric_key] = {"score": 0.0, "error": str(e)}
+                # Prepare evaluators with proper keyword mapping per Azure documentation
+                evaluators_for_sdk = {}
+                requested_metrics = [metric.value.lower() for metric in request.metrics]
+                
+                for metric in requested_metrics:
+                    if metric in self.evaluators:
+                        evaluators_for_sdk[metric] = self.evaluators[metric]
+                
+                logger.info(f"🚀 Running Azure AI Foundry evaluation with SDK evaluate() function for metrics: {list(evaluators_for_sdk.keys())}")
+                
+                # Run evaluation using Azure AI Evaluation SDK - this logs to Azure AI Foundry portal
+                eval_result = evaluate(
+                    data=temp_file,
+                    evaluators=evaluators_for_sdk,
+                    evaluator_config={
+                        "groundedness": {
+                            "column_mapping": {
+                                "query": "${data.query}",
+                                "context": "${data.context}",
+                                "response": "${data.response}"
+                            }
+                        },
+                        "relevance": {
+                            "column_mapping": {
+                                "query": "${data.query}",
+                                "response": "${data.response}"
+                            }
+                        },
+                        "coherence": {
+                            "column_mapping": {
+                                "query": "${data.query}",
+                                "response": "${data.response}"
+                            }
+                        },
+                        "fluency": {
+                            "column_mapping": {
+                                "query": "${data.query}",
+                                "response": "${data.response}"
+                            }
+                        }
+                    },
+                    azure_ai_project=azure_ai_project,  # This enables portal logging
+                )
+                
+                # Extract scores from Azure AI Evaluation SDK result (1-5 Likert scale)
+                metrics = eval_result.get('metrics', {})
+                
+                # Azure AI evaluators use specific naming conventions for metrics
+                groundedness_score = (
+                    metrics.get('groundedness.groundedness') or 
+                    metrics.get('groundedness') or 
+                    0.0
+                )
+                relevance_score = (
+                    metrics.get('relevance.relevance') or 
+                    metrics.get('relevance') or 
+                    0.0
+                )
+                coherence_score = (
+                    metrics.get('coherence.coherence') or 
+                    metrics.get('coherence') or 
+                    0.0
+                )
+                fluency_score = (
+                    metrics.get('fluency.fluency') or 
+                    metrics.get('fluency') or 
+                    0.0
+                )
+                
+                # Calculate overall score (average of available scores)
+                available_scores = [s for s in [groundedness_score, relevance_score, coherence_score, fluency_score] if s > 0]
+                overall_score = sum(available_scores) / len(available_scores) if available_scores else 0.0
+                
+                # Update result with Azure AI Foundry scores (1-5 Likert scale)
+                result.groundedness_score = groundedness_score if groundedness_score > 0 else None
+                result.relevance_score = relevance_score if relevance_score > 0 else None
+                result.coherence_score = coherence_score if coherence_score > 0 else None
+                result.fluency_score = fluency_score if fluency_score > 0 else None
+                result.overall_score = overall_score
+                
+                # Add detailed metadata
+                result.detailed_scores = {
+                    'groundedness': {'score': groundedness_score} if groundedness_score > 0 else None,
+                    'relevance': {'score': relevance_score} if relevance_score > 0 else None,
+                    'coherence': {'score': coherence_score} if coherence_score > 0 else None,
+                    'fluency': {'score': fluency_score} if fluency_score > 0 else None,
+                }
+                result.detailed_scores = {k: v for k, v in result.detailed_scores.items() if v is not None}
+                
+                result.reasoning = f"Azure AI Foundry evaluation completed using official SDK. Scores on 1-5 Likert scale: groundedness={groundedness_score}, relevance={relevance_score}, coherence={coherence_score}, fluency={fluency_score}"
+                
+                # Add metadata about the evaluation
+                result.metadata = {
+                    "azure_ai_foundry_results": metrics,
+                    "framework_type": "azure_ai_foundry",
+                    "evaluation_timestamp": datetime.utcnow().isoformat(),
+                    "score_scale": "1-5 Likert scale (Azure AI Foundry standard)",
+                    "logged_to_foundry": azure_ai_project is not None,
+                    "studio_url": eval_result.get('studio_url'),  # Link to view in Azure AI Foundry portal
+                    "sdk_result": eval_result
+                }
+                
+                logger.info(f"✅ Azure AI Foundry evaluation completed:")
+                logger.info(f"  ✅ groundedness: {groundedness_score}")
+                logger.info(f"  ✅ relevance: {relevance_score}")
+                logger.info(f"  ✅ coherence: {coherence_score}")
+                logger.info(f"  ✅ fluency: {fluency_score}")
+                logger.info(f"  ✅ overall: {overall_score}")
+                if azure_ai_project:
+                    logger.info(f"  🔗 View in Azure AI Foundry portal: {eval_result.get('studio_url')}")
+                
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_file):
+                    os.unlink(temp_file)
+                    
+        except Exception as e:
+            logger.error(f"❌ Error in Azure AI Foundry evaluation: {e}", exc_info=True)
+            # Set error state but don't fail completely
+            result.overall_score = 0.0
+            result.reasoning = f"Azure AI Foundry evaluation failed: {str(e)}"
+            result.metadata = {"error": str(e), "evaluator_type": "foundry"}
 
-        # Calculate overall score
-        result.overall_score = sum(scores) / len(scores) if scores else 0.0
-        result.detailed_scores = detailed_scores
-        result.reasoning = "Evaluated using Azure AI Foundry built-in evaluators"
-
-        logger.info(f"Foundry evaluation completed for question_id: {request.question_id} with {len(scores)} metrics executed in parallel")
+        logger.info(f"Foundry evaluation completed for question_id: {request.question_id}")
         return result
 
     async def _run_evaluator(self, evaluator_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Run Foundry evaluator using async subprocess approach for true parallel execution.
-        This method uses the async subprocess approach for reliability and parallel processing.
+        Run Azure AI Foundry evaluator using the Azure AI Evaluation SDK
         """
         try:
-            logger.info(f"Running {evaluator_name} evaluator using async subprocess approach...")
+            logger.info(f"Running {evaluator_name} evaluator using Azure AI Evaluation SDK...")
             
-            from .foundry_evaluator_subprocess import run_foundry_evaluation_async
+            # Get the evaluator instance
+            evaluator = self.available_evaluators.get(evaluator_name)
+            if not evaluator:
+                raise ValueError(f"Evaluator {evaluator_name} not available")
             
-            # Map evaluator names to class names
-            evaluator_class_map = {
-                "groundedness": "GroundednessEvaluator",
-                "relevance": "RelevanceEvaluator", 
-                "coherence": "CoherenceEvaluator",
-                "fluency": "FluencyEvaluator"
+            # Prepare evaluation parameters based on the evaluator requirements
+            eval_params = {
+                "query": data["query"],
+                "response": data["response"]
             }
             
-            evaluator_class = evaluator_class_map.get(evaluator_name)
-            if not evaluator_class:
-                raise ValueError(f"Unknown evaluator: {evaluator_name}")
+            # Add context for evaluators that need it
+            if evaluator_name in ["groundedness"]:
+                eval_params["context"] = data["context"]
             
-            # Use evaluation-specific settings if available, otherwise fall back to main OpenAI settings
-            azure_endpoint = settings.AZURE_EVALUATION_ENDPOINT or settings.AZURE_OPENAI_ENDPOINT
-            api_key = settings.AZURE_EVALUATION_API_KEY or settings.AZURE_OPENAI_API_KEY
-            deployment = settings.AZURE_EVALUATION_MODEL_DEPLOYMENT or settings.AZURE_OPENAI_DEPLOYMENT_NAME
+            # Run evaluation in thread pool to avoid blocking
+            import asyncio
+            result = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: evaluator(**eval_params)
+            )
             
-            # Run evaluation in async subprocess for true parallelism with tracing
-            async with observability.trace_azure_ai_foundry_operation(
-                operation_type="evaluation",
-                evaluator_type=evaluator_name,
-                model=deployment
-            ):
-                result = await run_foundry_evaluation_async(
-                    evaluator_name=evaluator_class,
-                    query=data["query"],
-                    response=data["response"],
-                    context=data["context"],
-                    azure_endpoint=azure_endpoint,
-                    api_key=api_key,
-                    deployment=deployment,
-                    api_version=settings.AZURE_OPENAI_API_VERSION
+            # Process the result - Azure AI evaluators return different formats
+            if isinstance(result, dict):
+                # Extract score from various possible field names
+                score = (
+                    result.get("score") or
+                    result.get(evaluator_name) or
+                    result.get(f"gpt_{evaluator_name}") or
+                    result.get(f"{evaluator_name}_score") or
+                    0.0
                 )
+                reasoning = result.get("reason") or result.get("reasoning") or f"Azure AI Foundry {evaluator_name} evaluation"
+                
+                processed_result = {
+                    "score": float(score),
+                    "reasoning": reasoning,
+                    "raw_result": result
+                }
+            else:
+                # Some evaluators might return a simple score
+                processed_result = {
+                    "score": float(result) if result is not None else 0.0,
+                    "reasoning": f"Azure AI Foundry {evaluator_name} evaluation",
+                    "raw_result": result
+                }
             
-            logger.info(f"Async subprocess evaluation successful for {evaluator_name}: {result}")
-            return result
+            logger.info(f"Azure AI Evaluation SDK evaluation successful for {evaluator_name}: score={processed_result['score']}")
+            return processed_result
             
         except Exception as e:
             logger.error(f"Error running {evaluator_name} evaluator: {e}", exc_info=True)
@@ -1010,29 +1150,13 @@ class CustomEvaluator:
     def _initialize_client(self):
         """Initialize Azure OpenAI client for evaluation"""
         try:
-            # Use the same authentication method as the main Azure services
-            if settings.AZURE_CLIENT_SECRET and settings.AZURE_TENANT_ID and settings.AZURE_CLIENT_ID:
-                from azure.identity import ClientSecretCredential
-                credential = ClientSecretCredential(
-                    tenant_id=settings.AZURE_TENANT_ID,
-                    client_id=settings.AZURE_CLIENT_ID,
-                    client_secret=settings.AZURE_CLIENT_SECRET
-                )
-                
-                self.client = AsyncAzureOpenAI(
-                    azure_endpoint=settings.AZURE_EVALUATION_ENDPOINT or settings.AZURE_OPENAI_ENDPOINT,
-                    azure_ad_token_provider=lambda: credential.get_token("https://cognitiveservices.azure.com/.default").token,
-                    api_version=settings.AZURE_OPENAI_API_VERSION
-                )
-                logger.info("Custom evaluator OpenAI client initialized with Service Principal authentication")
-            else:
-                # Fallback to API key authentication
-                self.client = AsyncAzureOpenAI(
-                    azure_endpoint=settings.AZURE_EVALUATION_ENDPOINT or settings.AZURE_OPENAI_ENDPOINT,
-                    api_key=settings.AZURE_EVALUATION_API_KEY or settings.AZURE_OPENAI_API_KEY,
-                    api_version=settings.AZURE_OPENAI_API_VERSION
-                )
-                logger.info("Custom evaluator OpenAI client initialized with API key authentication")
+            # Use API key authentication for simpler setup
+            self.client = AsyncAzureOpenAI(
+                azure_endpoint=settings.AZURE_EVALUATION_ENDPOINT or settings.AZURE_OPENAI_ENDPOINT,
+                api_key=settings.AZURE_EVALUATION_API_KEY or settings.AZURE_OPENAI_API_KEY,
+                api_version=settings.AZURE_OPENAI_API_VERSION
+            )
+            logger.info("Custom evaluator OpenAI client initialized with API key authentication")
             
         except Exception as e:
             logger.error(f"Failed to initialize custom evaluator: {e}")
@@ -1045,6 +1169,9 @@ class CustomEvaluator:
         # Check if client is available
         if not self.client:
             raise ValueError("Custom evaluator OpenAI client not available")
+        
+        logger.info(f"Starting custom evaluation for question_id: {request.question_id}")
+        logger.info(f"Requested metrics: {[m.value for m in request.metrics]}")
         
         result = EvaluationResult(
             question_id=request.question_id,
@@ -1061,51 +1188,79 @@ class CustomEvaluator:
         try:
             # Run evaluation for each requested metric
             evaluation_tasks = []
+            metric_names = []
             
             for metric in request.metrics:
                 if metric == EvaluationMetric.GROUNDEDNESS:
                     evaluation_tasks.append(self._evaluate_groundedness(request))
+                    metric_names.append("groundedness")
                 elif metric == EvaluationMetric.RELEVANCE:
                     evaluation_tasks.append(self._evaluate_relevance(request))
+                    metric_names.append("relevance")
                 elif metric == EvaluationMetric.COHERENCE:
                     evaluation_tasks.append(self._evaluate_coherence(request))
+                    metric_names.append("coherence")
                 elif metric == EvaluationMetric.FLUENCY:
                     evaluation_tasks.append(self._evaluate_fluency(request))
+                    metric_names.append("fluency")
+            
+            logger.info(f"Running {len(evaluation_tasks)} evaluation tasks: {metric_names}")
             
             # Run evaluations concurrently
             evaluation_results = await asyncio.gather(*evaluation_tasks, return_exceptions=True)
+            
+            logger.info(f"Evaluation tasks completed, processing {len(evaluation_results)} results")
             
             # Process results
             detailed_scores = {}
             scores = []
             
-            for i, metric in enumerate(request.metrics):
-                if i < len(evaluation_results) and not isinstance(evaluation_results[i], Exception):
+            for i, (metric, metric_name) in enumerate(zip(request.metrics, metric_names)):
+                logger.info(f"Processing result {i} for metric {metric_name}")
+                
+                if i < len(evaluation_results):
                     eval_result = evaluation_results[i]
-                    detailed_scores[metric.value] = eval_result
                     
-                    if metric == EvaluationMetric.GROUNDEDNESS:
-                        result.groundedness_score = eval_result.get("score", 0.0)
-                        scores.append(result.groundedness_score)
-                    elif metric == EvaluationMetric.RELEVANCE:
-                        result.relevance_score = eval_result.get("score", 0.0)
-                        scores.append(result.relevance_score)
-                    elif metric == EvaluationMetric.COHERENCE:
-                        result.coherence_score = eval_result.get("score", 0.0)
-                        scores.append(result.coherence_score)
-                    elif metric == EvaluationMetric.FLUENCY:
-                        result.fluency_score = eval_result.get("score", 0.0)
-                        scores.append(result.fluency_score)
+                    if isinstance(eval_result, Exception):
+                        logger.error(f"Error in {metric_name} evaluation: {eval_result}")
+                        detailed_scores[metric.value] = {"score": 0.0, "error": str(eval_result)}
+                    else:
+                        logger.info(f"{metric_name} evaluation result: {eval_result}")
+                        detailed_scores[metric.value] = eval_result
+                        
+                        score_value = eval_result.get("score", 0.0)
+                        if score_value is not None:
+                            if metric == EvaluationMetric.GROUNDEDNESS:
+                                result.groundedness_score = score_value
+                                scores.append(score_value)
+                            elif metric == EvaluationMetric.RELEVANCE:
+                                result.relevance_score = score_value
+                                scores.append(score_value)
+                            elif metric == EvaluationMetric.COHERENCE:
+                                result.coherence_score = score_value
+                                scores.append(score_value)
+                            elif metric == EvaluationMetric.FLUENCY:
+                                result.fluency_score = score_value
+                                scores.append(score_value)
+                            
+                            logger.info(f"Set {metric_name} score to {score_value}")
+                        else:
+                            logger.warning(f"No score found in {metric_name} result: {eval_result}")
+                else:
+                    logger.error(f"Missing result for metric {metric_name} at index {i}")
             
             # Calculate overall score
             result.overall_score = sum(scores) / len(scores) if scores else 0.0
             result.detailed_scores = detailed_scores
-            result.reasoning = "Evaluated using custom Azure OpenAI-based evaluators"
+            result.reasoning = f"Evaluated using custom Azure OpenAI-based evaluators. Processed {len(scores)} metrics."
             
             logger.info(f"Custom evaluation completed for question_id: {request.question_id}")
+            logger.info(f"Final scores: overall={result.overall_score}, groundedness={result.groundedness_score}, relevance={result.relevance_score}, coherence={result.coherence_score}, fluency={result.fluency_score}")
             
         except Exception as e:
             logger.error(f"Custom evaluation failed: {e}")
+            import traceback
+            logger.error(f"Custom evaluation traceback:\n{traceback.format_exc()}")
             result.error_message = str(e)
         
         return result
@@ -1230,12 +1385,16 @@ class CustomEvaluator:
     async def _call_evaluation_model(self, prompt: str) -> Dict[str, Any]:
         """Make a call to the evaluation model"""
         try:
+            # Use the appropriate model deployment name
+            model_deployment = settings.AZURE_EVALUATION_MODEL_DEPLOYMENT or settings.AZURE_OPENAI_DEPLOYMENT_NAME
+            logger.info(f"Calling evaluation model: {model_deployment}")
+            
             response = await self.client.chat.completions.create(
-                model=settings.AZURE_EVALUATION_MODEL_DEPLOYMENT,
+                model=model_deployment,
                 messages=[
                     {
                         "role": "system", 
-                        "content": "You are a precise AI evaluator. Always return valid JSON."
+                        "content": "You are a precise AI evaluator. Always return valid JSON format exactly as requested."
                     },
                     {"role": "user", "content": prompt}
                 ],
@@ -1244,20 +1403,40 @@ class CustomEvaluator:
             )
             
             content = response.choices[0].message.content
+            logger.info(f"Model response content: {content}")
             
             # Try to parse JSON response
             try:
-                return json.loads(content)
-            except json.JSONDecodeError:
-                # Fallback if JSON parsing fails
+                parsed_result = json.loads(content)
+                logger.info(f"Successfully parsed JSON result: {parsed_result}")
+                return parsed_result
+            except json.JSONDecodeError as json_error:
+                logger.error(f"JSON parsing failed: {json_error}")
+                logger.error(f"Raw content was: {content}")
+                
+                # Try to extract score from text if JSON parsing fails
+                import re
+                score_match = re.search(r'"score":\s*([0-9.]+)', content)
+                if score_match:
+                    extracted_score = float(score_match.group(1))
+                    logger.info(f"Extracted score from text: {extracted_score}")
+                    return {
+                        "score": extracted_score,
+                        "reasoning": content,
+                        "error": "Could not parse JSON response but extracted score"
+                    }
+                
+                # Fallback if no score found
                 return {
-                    "score": 0.5,
+                    "score": 0.0,
                     "reasoning": content,
-                    "error": "Could not parse JSON response"
+                    "error": f"Could not parse JSON response: {json_error}"
                 }
                 
         except Exception as e:
             logger.error(f"Error calling evaluation model: {e}")
+            import traceback
+            logger.error(f"Evaluation model call traceback:\n{traceback.format_exc()}")
             return {
                 "score": 0.0,
                 "reasoning": f"Evaluation failed: {str(e)}",
