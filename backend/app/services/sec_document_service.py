@@ -902,7 +902,8 @@ class SECDocumentService:
                 "content_type": metadata.get('content_type', 'text'),
                 "chunk_method": metadata.get('chunk_method', 'unknown'),
                 "file_size": metadata.get('file_size', 0) if metadata.get('file_size') is not None else 0,
-                "document_url": metadata.get('document_url', ''),                "text_vector": chunk.embedding
+                "document_url": metadata.get('document_url', ''),
+                "content_vector": chunk.embedding
             }
             search_documents.append(search_doc)
         

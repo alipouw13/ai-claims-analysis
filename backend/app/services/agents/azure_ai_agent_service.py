@@ -881,30 +881,55 @@ class AzureAIAgentService:
                         fallback_mgr = AzureServiceManager()
                         await fallback_mgr.initialize()
                         chat_deployment = self._extract_deployment_name(model_config.get('chat_model'))
+                        
+                        # If the original deployment failed, try fallback deployments
+                        fallback_deployments = [
+                            chat_deployment,  # Try original first
+                            settings.AZURE_OPENAI_CHAT_DEPLOYMENT_NAME,  # Default deployment
+                            "chat4omini",  # Known working deployment
+                            "gpt-4o-mini"  # Model name fallback
+                        ]
+                        
                         fallback_prompt = (
                             "You are a financial analysis assistant. Use the provided context to answer the user's question.\n"
                             "Cite sections explicitly in-line where appropriate. If the context lacks details, say so.\n\n"
                             f"Context:\n{retrieved_context}\n\nUser Question: {question}\n\nAnswer:" 
                         )
                         
-                        # Handle GPT-5 parameter differences
-                        chat_params = {
-                            "model": chat_deployment,
-                            "messages": [{"role": "user", "content": fallback_prompt}]
-                        }
+                        response_text = ""
+                        for deployment in fallback_deployments:
+                            if not deployment:
+                                continue
+                            try:
+                                logger.info(f"Trying fallback deployment: {deployment}")
+                                # Handle GPT-5 parameter differences
+                                chat_params = {
+                                    "model": deployment,
+                                    "messages": [{"role": "user", "content": fallback_prompt}]
+                                }
+                                
+                                if "gpt-5" in deployment.lower():
+                                    chat_params["max_completion_tokens"] = 800
+                                    # Don't set temperature for GPT-5 (use default of 1)
+                                else:
+                                    chat_params["temperature"] = float(model_config.get('temperature') or 0.1)
+                                    chat_params["max_tokens"] = 800
+                                
+                                resp = await fallback_mgr.openai_client.chat.completions.create(**chat_params)
+                                response_text = resp.choices[0].message.content if resp and resp.choices else ""
+                                if response_text.strip():
+                                    logger.info(f"Fallback successful with deployment: {deployment}")
+                                    break
+                            except Exception as deployment_error:
+                                logger.warning(f"Fallback deployment {deployment} failed: {deployment_error}")
+                                continue
                         
-                        if "gpt-5" in chat_deployment.lower():
-                            chat_params["max_completion_tokens"] = 800
-                            # Don't set temperature for GPT-5 (use default of 1)
-                        else:
-                            chat_params["temperature"] = float(model_config.get('temperature') or 0.1)
-                            chat_params["max_tokens"] = 800
-                        
-                        resp = await fallback_mgr.openai_client.chat.completions.create(**chat_params)
-                        text = resp.choices[0].message.content if resp and resp.choices else ""
                         # Mutate result to carry fallback answer
-                        result.response = text
-                        logger.info(f"Fallback response generated: {len(text)} characters")
+                        if response_text.strip():
+                            result.response = response_text
+                            logger.info(f"Fallback response generated: {len(response_text)} characters")
+                        else:
+                            logger.error("All fallback deployments failed to generate response")
                     except Exception as fallback_err:
                         logger.error(f"Fallback response generation failed: {fallback_err}")
                         # Keep empty; upper layer will still return citations

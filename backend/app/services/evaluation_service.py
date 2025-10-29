@@ -678,6 +678,8 @@ class EvaluationService:
                 "f1_score": result.f1_score,
                 "bleu_score": result.bleu_score,
                 "rouge_score": result.rouge_score,
+                "financial_accuracy_score": result.financial_accuracy_score,
+                "citation_quality_score": result.citation_quality_score,
                 "overall_score": result.overall_score,
                 "detailed_scores": result.detailed_scores,
                 "reasoning": result.reasoning,
@@ -731,6 +733,8 @@ class EvaluationService:
                 f1_score=result_dict.get("f1_score"),
                 bleu_score=result_dict.get("bleu_score"),
                 rouge_score=result_dict.get("rouge_score"),
+                financial_accuracy_score=result_dict.get("financial_accuracy_score"),
+                citation_quality_score=result_dict.get("citation_quality_score"),
                 overall_score=result_dict.get("overall_score"),
                 detailed_scores=result_dict.get("detailed_scores", {}),
                 reasoning=result_dict.get("reasoning"),
@@ -940,17 +944,14 @@ class FoundryEvaluator:
                 temp_file = f.name
             
             try:
-                # Configure Azure AI project for portal logging (from environment)
+                # Configure Azure AI project for portal logging
+                # For Azure AI Foundry projects, pass the project endpoint directly
                 azure_ai_project = None
-                if settings.AZURE_SUBSCRIPTION_ID and settings.AZURE_RESOURCE_GROUP and settings.AZURE_AI_PROJECT_NAME:
-                    azure_ai_project = {
-                        "subscription_id": settings.AZURE_SUBSCRIPTION_ID,
-                        "resource_group_name": settings.AZURE_RESOURCE_GROUP,
-                        "project_name": settings.AZURE_AI_PROJECT_NAME
-                    }
-                    logger.info("✅ Azure AI project configured for evaluation logging to portal")
+                if settings.AZURE_AI_PROJECT_ENDPOINT:
+                    azure_ai_project = settings.AZURE_AI_PROJECT_ENDPOINT
+                    logger.info("✅ Azure AI Foundry project configured for evaluation logging to portal")
                 else:
-                    logger.warning("Azure AI project not fully configured - evaluations will run locally only")
+                    logger.warning("Azure AI Foundry project endpoint not configured - evaluations will run locally only")
                 
                 # Prepare evaluators with proper keyword mapping per Azure documentation
                 evaluators_for_sdk = {}
@@ -1203,6 +1204,12 @@ class CustomEvaluator:
                 elif metric == EvaluationMetric.FLUENCY:
                     evaluation_tasks.append(self._evaluate_fluency(request))
                     metric_names.append("fluency")
+                elif metric == EvaluationMetric.FINANCIAL_ACCURACY:
+                    evaluation_tasks.append(self._evaluate_financial_accuracy(request))
+                    metric_names.append("financial_accuracy")
+                elif metric == EvaluationMetric.CITATION_QUALITY:
+                    evaluation_tasks.append(self._evaluate_citation_quality(request))
+                    metric_names.append("citation_quality")
             
             logger.info(f"Running {len(evaluation_tasks)} evaluation tasks: {metric_names}")
             
@@ -1242,6 +1249,12 @@ class CustomEvaluator:
                             elif metric == EvaluationMetric.FLUENCY:
                                 result.fluency_score = score_value
                                 scores.append(score_value)
+                            elif metric == EvaluationMetric.FINANCIAL_ACCURACY:
+                                result.financial_accuracy_score = score_value
+                                scores.append(score_value)
+                            elif metric == EvaluationMetric.CITATION_QUALITY:
+                                result.citation_quality_score = score_value
+                                scores.append(score_value)
                             
                             logger.info(f"Set {metric_name} score to {score_value}")
                         else:
@@ -1277,17 +1290,16 @@ class CustomEvaluator:
         
         Answer: {request.answer}
 
-        Please evaluate the groundedness on a scale of 0.0 to 1.0 where:
-        - 1.0: Fully grounded, every claim is supported by the context
-        - 0.8: Mostly grounded, most claims supported
-        - 0.6: Partially grounded, some claims supported
-        - 0.4: Minimally grounded, few claims supported
-        - 0.2: Poorly grounded, very few claims supported
-        - 0.0: Not grounded, no claims supported
+        Please evaluate the groundedness on a scale of 1 to 5 (Likert scale):
+        - 5: Fully grounded, every claim is supported by the context
+        - 4: Mostly grounded, most claims supported
+        - 3: Partially grounded, some claims supported
+        - 2: Minimally grounded, few claims supported
+        - 1: Not grounded, no claims supported
 
         Return your evaluation as JSON:
         {{
-            "score": <float between 0.0 and 1.0>,
+            "score": <integer between 1 and 5>,
             "reasoning": "<detailed explanation>",
             "supported_claims": ["<list of supported claims>"],
             "unsupported_claims": ["<list of unsupported claims>"]
@@ -1306,17 +1318,16 @@ class CustomEvaluator:
         
         Answer: {request.answer}
 
-        Please evaluate the relevance on a scale of 0.0 to 1.0 where:
-        - 1.0: Perfectly relevant, directly answers the question
-        - 0.8: Highly relevant, answers most aspects of the question
-        - 0.6: Moderately relevant, answers some aspects
-        - 0.4: Somewhat relevant, tangentially related
-        - 0.2: Minimally relevant, barely addresses the question
-        - 0.0: Not relevant, does not address the question
+        Please evaluate the relevance on a scale of 1 to 5 (Likert scale):
+        - 5: Perfectly relevant, directly answers the question
+        - 4: Highly relevant, answers most aspects of the question
+        - 3: Moderately relevant, answers some aspects
+        - 2: Somewhat relevant, tangentially related
+        - 1: Not relevant, does not address the question
 
         Return your evaluation as JSON:
         {{
-            "score": <float between 0.0 and 1.0>,
+            "score": <integer between 1 and 5>,
             "reasoning": "<detailed explanation>",
             "addressed_aspects": ["<list of question aspects addressed>"],
             "missing_aspects": ["<list of question aspects not addressed>"]
@@ -1335,17 +1346,16 @@ class CustomEvaluator:
         
         Answer: {request.answer}
 
-        Please evaluate the coherence on a scale of 0.0 to 1.0 where:
-        - 1.0: Highly coherent, logical flow, easy to follow
-        - 0.8: Mostly coherent, generally easy to follow
-        - 0.6: Moderately coherent, some confusing parts
-        - 0.4: Somewhat coherent, several confusing parts
-        - 0.2: Minimally coherent, difficult to follow
-        - 0.0: Incoherent, no logical flow
+        Please evaluate the coherence on a scale of 1 to 5 (Likert scale):
+        - 5: Highly coherent, logical flow, easy to follow
+        - 4: Mostly coherent, generally easy to follow
+        - 3: Moderately coherent, some confusing parts
+        - 2: Somewhat coherent, several confusing parts
+        - 1: Incoherent, no logical flow
 
         Return your evaluation as JSON:
         {{
-            "score": <float between 0.0 and 1.0>,
+            "score": <integer between 1 and 5>,
             "reasoning": "<detailed explanation>",
             "strengths": ["<list of coherent aspects>"],
             "weaknesses": ["<list of incoherent aspects>"]
@@ -1362,21 +1372,86 @@ class CustomEvaluator:
 
         Answer: {request.answer}
 
-        Please evaluate the fluency on a scale of 0.0 to 1.0 where:
-        - 1.0: Excellent fluency, perfect grammar and style
-        - 0.8: Good fluency, minor issues
-        - 0.6: Adequate fluency, some grammatical issues
-        - 0.4: Poor fluency, many grammatical issues
-        - 0.2: Very poor fluency, difficult to read
-        - 0.0: Incomprehensible
+        Please evaluate the fluency on a scale of 1 to 5 (Likert scale):
+        - 5: Excellent fluency, perfect grammar and style
+        - 4: Good fluency, minor issues
+        - 3: Adequate fluency, some grammatical issues
+        - 2: Poor fluency, many grammatical issues
+        - 1: Incomprehensible
 
         Return your evaluation as JSON:
         {{
-            "score": <float between 0.0 and 1.0>,
+            "score": <integer between 1 and 5>,
             "reasoning": "<detailed explanation>",
-            "grammar_score": <float between 0.0 and 1.0>,
-            "style_score": <float between 0.0 and 1.0>,
-            "readability_score": <float between 0.0 and 1.0>
+            "grammar_score": <integer between 1 and 5>,
+            "style_score": <integer between 1 and 5>,
+            "readability_score": <integer between 1 and 5>
+        }}
+        """
+        
+        return await self._call_evaluation_model(prompt)
+    
+    async def _evaluate_financial_accuracy(self, request: EvaluationRequest) -> Dict[str, Any]:
+        """Evaluate financial accuracy using custom prompt"""
+        prompt = f"""
+        You are an expert financial evaluator assessing the accuracy of an AI-generated answer 
+        in the context of financial and insurance claims analysis.
+        Financial accuracy measures how correct and reliable the financial information, 
+        calculations, and claims analysis are in the answer.
+
+        Question: {request.question}
+        
+        Answer: {request.answer}
+        
+        Context: {chr(10).join(request.context) if request.context else "No context provided"}
+
+        Please evaluate the financial accuracy on a scale of 1 to 5 (Likert scale):
+        - 5: Highly accurate, all financial information and calculations are correct
+        - 4: Mostly accurate, minor financial details may be imprecise
+        - 3: Moderately accurate, some financial information is correct
+        - 2: Somewhat accurate, significant financial inaccuracies present
+        - 1: Inaccurate, financial information is largely incorrect or misleading
+
+        Return your evaluation as JSON:
+        {{
+            "score": <integer between 1 and 5>,
+            "reasoning": "<detailed explanation>",
+            "accurate_financial_details": ["<list of correct financial information>"],
+            "inaccurate_financial_details": ["<list of incorrect financial information>"],
+            "calculation_accuracy": <integer between 1 and 5>
+        }}
+        """
+        
+        return await self._call_evaluation_model(prompt)
+    
+    async def _evaluate_citation_quality(self, request: EvaluationRequest) -> Dict[str, Any]:
+        """Evaluate citation quality using custom prompt"""
+        prompt = f"""
+        You are an expert evaluator assessing the quality of citations and source references 
+        in an AI-generated answer. Citation quality measures how well the answer references 
+        and attributes information to its sources, and how reliable those references are.
+
+        Question: {request.question}
+        
+        Answer: {request.answer}
+        
+        Available Context/Sources: {chr(10).join(request.context) if request.context else "No context provided"}
+
+        Please evaluate the citation quality on a scale of 1 to 5 (Likert scale):
+        - 5: Excellent citations, all claims properly attributed to reliable sources
+        - 4: Good citations, most claims properly attributed
+        - 3: Adequate citations, some claims attributed to sources
+        - 2: Poor citations, few claims properly attributed
+        - 1: No citations, claims not attributed to sources
+
+        Return your evaluation as JSON:
+        {{
+            "score": <integer between 1 and 5>,
+            "reasoning": "<detailed explanation>",
+            "properly_cited_claims": ["<list of well-cited claims>"],
+            "uncited_claims": ["<list of claims without proper citations>"],
+            "source_reliability": <integer between 1 and 5>,
+            "attribution_completeness": <integer between 1 and 5>
         }}
         """
         

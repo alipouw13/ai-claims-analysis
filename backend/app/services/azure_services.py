@@ -475,7 +475,7 @@ class AzureServiceManager:
                 SearchableField(name="chunk", type=SearchFieldDataType.String),
                 SearchableField(name="title", type=SearchFieldDataType.String),
                 SearchField(
-                    name="text_vector", 
+                    name="content_vector", 
                     type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
                     searchable=True,
                     vector_search_dimensions=1536,

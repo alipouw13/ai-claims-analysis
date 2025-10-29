@@ -104,13 +104,13 @@ class AzureAIFoundryEvaluator:
             from azure.ai.evaluation import AzureOpenAIModelConfiguration
             import os
             
-            # Use the configured evaluation model settings
-            model_config = AzureOpenAIModelConfiguration(
-                azure_endpoint=os.environ.get("AZURE_OPENAI_ENDPOINT"),
-                api_key=os.environ.get("AZURE_OPENAI_API_KEY"),
-                azure_deployment=os.environ.get("AZURE_AI_FOUNDRY_EVALUATOR_MODEL", "gpt-4.1-mini"),
-                api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
-            )
+            # Use the configured evaluation model settings - use dict format as shown in docs
+            model_config = {
+                "azure_endpoint": os.environ.get("AZURE_OPENAI_ENDPOINT"),
+                "api_key": os.environ.get("AZURE_OPENAI_API_KEY"),
+                "azure_deployment": os.environ.get("AZURE_AI_FOUNDRY_EVALUATOR_MODEL", "gpt-4.1-mini"),
+                "api_version": os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+            }
             
             enabled_evaluators = self.config.enabled_evaluators or [
                 AzureEvaluatorType.GROUNDEDNESS,

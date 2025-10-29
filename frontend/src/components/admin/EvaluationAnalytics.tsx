@@ -124,32 +124,20 @@ export const EvaluationAnalytics: React.FC = () => {
     }
   }, [selectedSession]);
 
-  const formatScore = (score: number | null | undefined, isFoundry: boolean = false): string => {
+  const formatScore = (score: number | null | undefined): string => {
     if (score === null || score === undefined || isNaN(score)) return 'N/A';
     
-    // Foundry scores are on 1-5 scale, display as "X.X/5"
-    if (isFoundry || score > 1) {
-      return `${score.toFixed(1)}/5`;
-    }
-    
-    // Custom/legacy scores are on 0-1 scale, display as percentage
-    return `${(score * 100).toFixed(1)}%`;
+    // Both Foundry and Custom scores now use 1-5 Likert scale
+    return `${score.toFixed(1)}/5`;
   };
 
-  const getScoreColor = (score: number | null | undefined, isFoundry: boolean = false): string => {
+  const getScoreColor = (score: number | null | undefined): string => {
     if (score === null || score === undefined || isNaN(score)) return 'text-gray-500';
     
-    // Foundry scores are on 1-5 scale
-    if (isFoundry || score > 1) {
-      if (score >= 4) return 'text-green-600';   // 4-5: Good
-      if (score >= 3) return 'text-yellow-600';  // 3-4: Fair
-      return 'text-red-600';                     // 1-3: Poor
-    }
-    
-    // Custom/legacy scores are on 0-1 scale
-    if (score >= 0.8) return 'text-green-600';
-    if (score >= 0.6) return 'text-yellow-600';
-    return 'text-red-600';
+    // All scores now use 1-5 Likert scale
+    if (score >= 4) return 'text-green-600';   // 4-5: Good
+    if (score >= 3) return 'text-yellow-600';  // 3-4: Fair
+    return 'text-red-600';                     // 1-3: Poor
   };
 
   const getProgressValue = (score: number | null | undefined, isFoundry: boolean = false): number => {

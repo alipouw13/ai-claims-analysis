@@ -20,6 +20,8 @@ interface EvaluationResult {
   f1_score?: number;
   bleu_score?: number;
   rouge_score?: number;
+  financial_accuracy_score?: number;
+  citation_quality_score?: number;
   overall_score?: number;
   evaluation_model: string;
   evaluation_timestamp: string;
@@ -28,7 +30,7 @@ interface EvaluationResult {
   answer: string;
   context: string[];
   ground_truth?: string;
-  detailed_scores: any;
+  detailed_scores: Record<string, unknown>;
   reasoning?: string;
   feedback?: string;
   recommendations: string[];
@@ -85,25 +87,29 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
   const formatScore = (score: number | undefined) => {
     if (!score) return 'N/A';
     
-    // For Foundry evaluators (1-5 scale), show as "4.0/5"
-    if (evaluationResult.evaluator_type === 'foundry') {
-      return `${score.toFixed(1)}/5`;
-    }
+    // Both Foundry and Custom evaluators now use 1-5 Likert scale
+    return `${score.toFixed(1)}/5`;
+  };
+
+  const getThresholdStatus = (score: number | undefined) => {
+    if (!score || evaluationResult.evaluator_type !== 'foundry') return null;
     
-    // For custom evaluators (0-1 scale), show as percentage
-    return (score * 100).toFixed(1) + '%';
+    // Azure AI Foundry uses threshold of 3 for pass/fail
+    const threshold = 3;
+    const passed = score >= threshold;
+    
+    return {
+      passed,
+      status: passed ? 'PASS' : 'FAIL',
+      percentage: passed ? '100%' : `${Math.round((score / 5) * 100)}%`
+    };
   };
 
   const getProgressValue = (score: number | undefined) => {
     if (!score) return 0;
     
-    // For Foundry evaluators (1-5 scale), convert to 0-100 for progress bar
-    if (evaluationResult.evaluator_type === 'foundry') {
-      return (score / 5) * 100;
-    }
-    
-    // For custom evaluators (0-1 scale), convert to percentage
-    return score * 100;
+    // Both Foundry and Custom evaluators now use 1-5 scale, convert to 0-100 for progress bar
+    return (score / 5) * 100;
   };
 
   const scores = [
@@ -112,6 +118,8 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
     { name: 'Relevance', value: evaluationResult.relevance_score, description: 'How relevant the answer is to the question' },
     { name: 'Coherence', value: evaluationResult.coherence_score, description: 'How coherent and well-structured the answer is' },
     { name: 'Fluency', value: evaluationResult.fluency_score, description: 'How fluent and natural the answer reads' },
+    { name: 'Financial Accuracy', value: evaluationResult.financial_accuracy_score, description: 'Accuracy of financial information and calculations' },
+    { name: 'Citation Quality', value: evaluationResult.citation_quality_score, description: 'Quality of source citations and references' },
     { name: 'Similarity', value: evaluationResult.similarity_score, description: 'Semantic similarity to expected answer' },
     { name: 'F1 Score', value: evaluationResult.f1_score, description: 'F1 score for answer precision and recall' },
     { name: 'BLEU Score', value: evaluationResult.bleu_score, description: 'BLEU score for translation-like quality' },
@@ -155,7 +163,17 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
             {evaluationResult.overall_score && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Overall Evaluation Score</CardTitle>
+                  <CardTitle className="text-lg flex items-center justify-between">
+                    <span>Overall Evaluation Score</span>
+                    {evaluationResult.evaluator_type === 'foundry' && (
+                      <Badge 
+                        variant="outline" 
+                        className="text-xs"
+                      >
+                        1-5 Likert Scale
+                      </Badge>
+                    )}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center space-x-4">
@@ -167,11 +185,23 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
                         value={getProgressValue(evaluationResult.overall_score)} 
                         className="h-3"
                       />
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {getScoreLabel(evaluationResult.overall_score)}
-                      </p>
+                      <div className="flex justify-between items-center mt-1">
+                        <p className="text-sm text-muted-foreground">
+                          {getScoreLabel(evaluationResult.overall_score)}
+                        </p>
+                        {evaluationResult.evaluator_type === 'foundry' && evaluationResult.overall_score >= 3 && (
+                          <Badge variant="default" className="text-xs">
+                            THRESHOLD PASSED (≥3/5)
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
+                  {evaluationResult.evaluator_type === 'foundry' && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      📊 Azure AI Foundry Portal shows 100% when scores ≥ 3/5 threshold
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -179,24 +209,49 @@ export const EvaluationModal: React.FC<EvaluationModalProps> = ({
             {/* Detailed Scores */}
             <Card>
               <CardHeader>
-                <CardTitle>Detailed Metrics</CardTitle>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Detailed Metrics</span>
+                  {evaluationResult.evaluator_type === 'foundry' && (
+                    <div className="text-xs text-muted-foreground">
+                      Azure AI Foundry: 1-5 Scale • Threshold: ≥3 = Pass (100%)
+                    </div>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {scores.filter(score => score.value !== undefined).map((score) => (
-                    <div key={score.name} className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium">{score.name}</span>
-                        <span className={`text-sm font-semibold ${getScoreColor(score.value)}`}>
-                          {formatScore(score.value)}
-                        </span>
+                  {scores.filter(score => score.value !== undefined).map((score) => {
+                    const thresholdStatus = getThresholdStatus(score.value);
+                    return (
+                      <div key={score.name} className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium">{score.name}</span>
+                          <div className="flex items-center space-x-2">
+                            <span className={`text-sm font-semibold ${getScoreColor(score.value)}`}>
+                              {formatScore(score.value)}
+                            </span>
+                            {thresholdStatus && (
+                              <Badge 
+                                variant={thresholdStatus.passed ? "default" : "destructive"}
+                                className="text-xs"
+                              >
+                                {thresholdStatus.status} ({thresholdStatus.percentage})
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <Progress value={getProgressValue(score.value)} className="h-2" />
+                        <p className="text-xs text-muted-foreground">
+                          {score.description}
+                          {thresholdStatus && (
+                            <span className="ml-1 text-muted-foreground">
+                              • Azure AI Foundry threshold: ≥3/5
+                            </span>
+                          )}
+                        </p>
                       </div>
-                      <Progress value={getProgressValue(score.value)} className="h-2" />
-                      <p className="text-xs text-muted-foreground">
-                        {score.description}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>

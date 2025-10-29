@@ -362,6 +362,8 @@ class EvaluationMetric(str, Enum):
     F1_SCORE = "f1_score"
     BLEU_SCORE = "bleu_score"
     ROUGE_SCORE = "rouge_score"
+    FINANCIAL_ACCURACY = "financial_accuracy"
+    CITATION_QUALITY = "citation_quality"
 
 class EvaluationResult(BaseModel):
     id: str = Field(default_factory=lambda: str(__import__('uuid').uuid4()))
@@ -379,6 +381,8 @@ class EvaluationResult(BaseModel):
     f1_score: Optional[float] = Field(None, ge=0.0, le=1.0)
     bleu_score: Optional[float] = Field(None, ge=0.0, le=1.0)
     rouge_score: Optional[float] = Field(None, ge=0.0, le=1.0)
+    financial_accuracy_score: Optional[float] = Field(None, ge=0.0, le=5.0)
+    citation_quality_score: Optional[float] = Field(None, ge=0.0, le=5.0)
     overall_score: Optional[float] = Field(None, ge=0.0, le=5.0)
     
     # Evaluation details
