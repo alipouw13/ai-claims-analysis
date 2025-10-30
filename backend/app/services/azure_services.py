@@ -861,9 +861,14 @@ class AzureServiceManager:
             logger.info(f"list_unique_documents: index_name={index_name}, policy_ix={policy_ix}, claims_ix={claims_ix}, is_vector_schema={is_vector_schema}")
 
             if is_vector_schema:
-                select_fields = ["chunk_id", "parent_id", "title", "source", "processed_at"]
+                # For policy/claims indexes, use the simpler Content Processing schema fields
+                select_fields = ["id", "parent_id", "title", "source", "content"]
             else:
+                # For SEC/generic indexes, use the legacy field names
                 select_fields = ["id", "document_id", "source", "processed_at", "file_size", "title"]
+            
+            logger.info(f"Querying index '{index_name}' with select_fields: {select_fields}")
+            
             try:
                 results = await client.search(
                     search_text="*",
@@ -872,17 +877,24 @@ class AzureServiceManager:
                 )
             except Exception as sel_err:
                 logger.warning(f"list_unique_documents select failed for '{index_name}', retrying without select: {sel_err}")
+                # Try without select to see what fields are actually available
                 results = await client.search(
                     search_text="*",
                     top=top_k,
                 )
             docs_by_id: Dict[str, Dict] = {}
+            result_count = 0
             async for r in results:
+                result_count += 1
                 rd = dict(r)
                 # Use parent_id for vector schema; fallback to document_id/id
-                doc_id = rd.get("parent_id") if is_vector_schema else rd.get("document_id")
+                if is_vector_schema:
+                    doc_id = rd.get("parent_id") or rd.get("id")
+                else:
+                    doc_id = rd.get("document_id") or rd.get("id")
                 if not doc_id:
-                    doc_id = rd.get("id") or rd.get("chunk_id")
+                    # Final fallback to id field
+                    doc_id = rd.get("id")
                 if not doc_id:
                     continue
                 if doc_id not in docs_by_id:
@@ -906,26 +918,56 @@ class AzureServiceManager:
                         else:
                             doc_type = "Document"
                     
-                    # For vector schema (policy/claims), we don't have file_size or processed_at
-                    # Use current timestamp as a reasonable default for upload date
-                    upload_date = None
-                    file_size = 0
-                    
-                    # Try to get actual metadata if available
-                    if not is_vector_schema:
-                        upload_date = rd.get("processed_at")
-                        file_size = rd.get("file_size") or 0
-                    
+                    # Initialize document record - we'll update metadata as we process chunks
                     docs_by_id[doc_id] = {
                         "id": doc_id,
                         "filename": filename,
-                        "uploadDate": upload_date,
-                        "size": file_size,
+                        "uploadDate": None,  # Will find earliest timestamp across all chunks
+                        "size": 0,  # Will accumulate from all chunks
                         "chunks": 0,  # Will be counted below
                         "type": doc_type,
+                        "total_content_length": 0,  # Will be calculated below
                     }
+                
+                # Update metadata from this chunk
+                if not is_vector_schema:
+                    # For non-vector schemas, use document-level metadata
+                    upload_date = rd.get("processed_at")
+                    file_size = rd.get("file_size") or 0
+                    if upload_date and (not docs_by_id[doc_id]["uploadDate"] or upload_date < docs_by_id[doc_id]["uploadDate"]):
+                        docs_by_id[doc_id]["uploadDate"] = upload_date
+                    if file_size > docs_by_id[doc_id]["size"]:
+                        docs_by_id[doc_id]["size"] = file_size
+                else:
+                    # For vector schema, we don't have processed_at field in the index
+                    # Accumulate file size from content length
+                    content = rd.get("content", "")
+                    if content:
+                        docs_by_id[doc_id]["total_content_length"] += len(content)
+                        # Estimate file size with overhead (only update if we have content)
+                        docs_by_id[doc_id]["size"] = int(docs_by_id[doc_id]["total_content_length"] * 1.2)
                 # Count chunks for this document
                 docs_by_id[doc_id]["chunks"] = docs_by_id[doc_id].get("chunks", 0) + 1
+                
+            # Final cleanup and fallback handling
+            for doc_id, doc_info in docs_by_id.items():
+                # Handle missing upload dates for vector schema documents
+                if is_vector_schema and not doc_info.get("uploadDate"):
+                    # Fallback to current timestamp only if no processed_at was found in any chunk
+                    from datetime import datetime
+                    doc_info["uploadDate"] = datetime.now().isoformat()
+                    logger.debug(f"Document {doc_id}: no processed_at found in any chunk, using fallback timestamp")
+                
+                # Calculate estimated file size from content for vector schema documents
+                if is_vector_schema and doc_info.get("size", 0) == 0:
+                    # Estimate file size as content length * 1.2 (accounting for formatting, metadata, etc.)
+                    estimated_size = int(doc_info.get("total_content_length", 0) * 1.2)
+                    doc_info["size"] = estimated_size
+                
+                # Remove the temporary field
+                doc_info.pop("total_content_length", None)
+            
+            logger.info(f"list_unique_documents: processed {result_count} results, returning {len(docs_by_id)} unique documents from index '{index_name}'")
             return list(docs_by_id.values())
         except Exception as e:
             logger.error(f"Failed to list documents from index '{index_name}': {e}")

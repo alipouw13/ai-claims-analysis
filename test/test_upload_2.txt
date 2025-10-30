@@ -1,0 +1,8 @@
+Test Policy Document #2
+
+Policy Details:
+- Policy Number: TEST-002
+- Coverage: Full coverage
+- Premium: $1,500 annually
+
+This is a second test document to verify timestamp handling.

@@ -57,7 +57,8 @@ class DocumentProcessor:
     async def process_document(self, content: bytes, content_type: str, 
                              source: str, metadata: Dict = None, 
                              target_index_name: Optional[str] = None,
-                             document_id: Optional[str] = None) -> Dict:
+                             document_id: Optional[str] = None,
+                             progress_callback: Optional[callable] = None) -> Dict:
         """
         Enhanced document processing pipeline for financial documents
         
@@ -80,6 +81,9 @@ class DocumentProcessor:
             observability.track_document_processing_start(source, content_type)
             
             logger.info(f"Step 1: Extracting text (Azure DI if configured, fallback to local parsers)...")
+            if progress_callback:
+                progress_callback("parsing", 15.0, "Extracting document text")
+                
             extracted_content = {}
             use_local = False
             try:
@@ -117,6 +121,8 @@ class DocumentProcessor:
             logger.info(f"Step 4 COMPLETE: Document structure parsed")
             
             logger.info(f"Step 5: Creating domain-specific chunks...")
+            if progress_callback:
+                progress_callback("chunking", 35.0, "Breaking document into searchable chunks")
             chunks = []
             domain = 'policy'
             if (metadata or {}).get('is_claim'):
@@ -177,6 +183,8 @@ class DocumentProcessor:
             logger.info(f"Step 5 COMPLETE: Created {len(chunks)} {domain} chunks")
             
             logger.info(f"Step 6: Generating embeddings for chunks...")
+            if progress_callback:
+                progress_callback("embeddings", 50.0, f"Generating embeddings for {len(chunks)} chunks")
             # Extract embedding model from metadata
             embedding_model = metadata.get("embedding_model") if metadata else None
             logger.info(f"Using embedding model: {embedding_model or 'default from settings'}")
@@ -187,11 +195,39 @@ class DocumentProcessor:
                 embedding_model = embedding_model.split("(")[0].strip()
                 logger.info(f"Cleaned embedding model name to: {embedding_model}")
             
+            # Generate embeddings with proper error handling and progress tracking
+            successful_embeddings = 0
+            failed_embeddings = 0
+            
             for i, chunk in enumerate(chunks):
-                if i % 5 == 0:  # Log every 5th chunk to avoid spam
-                    logger.info(f"Generating embedding for chunk {i+1}/{len(chunks)}")
-                chunk.embedding = await self.azure_manager.get_embedding(chunk.content, model=embedding_model)
-            logger.info(f"Step 6 COMPLETE: All embeddings generated")
+                try:
+                    if i % 5 == 0:  # Log every 5th chunk to avoid spam
+                        logger.info(f"Generating embedding for chunk {i+1}/{len(chunks)}")
+                        # Update progress during embedding generation
+                        if progress_callback and len(chunks) > 0:
+                            embedding_progress = 50.0 + (i / len(chunks)) * 25.0  # 50-75% range
+                            progress_callback("embeddings", embedding_progress, f"Processing embedding {i+1}/{len(chunks)}")
+                    
+                    # Add timeout for individual embedding requests
+                    embedding_task = self.azure_manager.get_embedding(chunk.content, model=embedding_model)
+                    chunk.embedding = await asyncio.wait_for(embedding_task, timeout=30.0)
+                    successful_embeddings += 1
+                    
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout generating embedding for chunk {i+1}/{len(chunks)}")
+                    failed_embeddings += 1
+                    # Set a default zero vector to continue processing
+                    chunk.embedding = [0.0] * 1536  # Standard embedding dimension
+                    
+                except Exception as e:
+                    logger.error(f"Failed to generate embedding for chunk {i+1}/{len(chunks)}: {e}")
+                    failed_embeddings += 1
+                    # Set a default zero vector to continue processing
+                    chunk.embedding = [0.0] * 1536  # Standard embedding dimension
+            
+            if progress_callback:
+                progress_callback("embeddings", 75.0, f"Embeddings complete: {successful_embeddings} successful, {failed_embeddings} failed")
+            logger.info(f"Step 6 COMPLETE: Embeddings generated - {successful_embeddings} successful, {failed_embeddings} failed")
             
             logger.info(f"Step 6 COMPLETE: All embeddings generated")
             
@@ -252,6 +288,8 @@ class DocumentProcessor:
             logger.info(f"Step 7 COMPLETE: Prepared {len(search_documents)} search documents")
             
             logger.info(f"Step 8: Adding documents to Azure Search index...")
+            if progress_callback:
+                progress_callback("indexing", 85.0, f"Adding {len(search_documents)} documents to search index")
             # Add documents to Azure Search index
             if search_documents:
                 logger.info(f"Attempting to add {len(search_documents)} chunks for document {document_id} to search index")

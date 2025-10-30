@@ -1,0 +1,8 @@
+Test Policy Document #3
+
+Policy Details:
+- Policy Number: TEST-003
+- Coverage: Liability only
+- Premium: $800 annually
+
+This is a third test document to verify timestamp extraction from citation_info.

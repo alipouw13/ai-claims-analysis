@@ -264,7 +264,8 @@ async def process_document_async(
             source=filename,
             metadata=metadata,
             target_index_name=target_index_name,
-            document_id=document_id
+            document_id=document_id,
+            progress_callback=_update_status  # Pass the progress callback
         )
         logger.info(f"✅ processor.process_document completed successfully")
         

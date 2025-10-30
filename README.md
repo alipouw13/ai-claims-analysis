@@ -1,40 +1,62 @@
-# MSFT Insurance – Agentic AI Claims Assistant
+# AI Financial & Insurance Analysis Platform
 
-Production-ready claims assistant combining document ingestion, Azure AI Search-based RAG, multi-agent orchestration, Durable Functions, and MCP tools. Frontend provides three personas: Customer, Underwriter, Admin.
+A comprehensive financial and insurance analysis platform that leverages Azure AI services to serve both banking and insurance sectors. The system combines RAG (Retrieval-Augmented Generation), multi-agent orchestration, and advanced document processing to streamline financial analysis, insurance claims processing, and policy management workflows.
 
 ## Overview
 
-This repo implements a complete RAG Financial POC with three interconnected use cases:
+This repository implements a dual-domain AI platform serving both banking and insurance industries with specialized capabilities:
 
-1. **Context-Aware Content Generation**: RAG-based content generation with source citation
-2. **Agentic Question Answering**: Multi-source information retrieval with credibility verification
-3. **Adaptive Knowledge Base Management**: Automated knowledge base updates and curation
+### Banking Domain
+1. **Financial Document Analysis**: Automated processing and analysis of SEC filings, earnings reports, and financial statements
+2. **Investment Research**: AI-powered analysis of 10-K/10-Q reports for investment decision support
+3. **Regulatory Compliance**: Automated monitoring and analysis of regulatory filings and compliance documents
+
+### Insurance Domain
+1. **Intelligent Claims Processing**: Automated ingestion and analysis of claim documents with AI-powered assessment
+2. **Policy Document Management**: Comprehensive policy document storage, indexing, and retrieval with semantic search
+3. **Multi-Agent Claims Evaluation**: Specialized insurance agents for different claim types (auto, life, health, dental) working collaboratively
 
 ## Key Features
 
-### Adaptive Knowledge Base Management
-- **Multi-Domain Document Processing**: Support for banking (SEC documents), insurance policies, and claims documents
-- **Intelligent Index Routing**: Automatic routing to appropriate indexes based on document type and domain
-- **Information Acquisition**: Automated ingestion from multiple financial document sources
-- **Relevance Assessment**: AI-powered content evaluation and credibility scoring
-- **Knowledge Organization**: Hierarchical structuring with semantic relationships
-- **Conflict Resolution**: Intelligent handling of contradictory financial information
-- **Response Adaptation**: Dynamic updates based on new market data and reports
+### Banking & Financial Analysis
+- **SEC Document Processing**: Automated analysis of 10-K, 10-Q, 8-K filings and earnings transcripts
+- **Financial Metrics Extraction**: AI-powered extraction of key financial indicators, ratios, and performance data
+- **Investment Research**: Comprehensive analysis tools for equity research and investment decision support
+- **Regulatory Monitoring**: Automated tracking of regulatory changes and compliance requirements
+- **Risk Assessment**: Financial risk analysis and creditworthiness evaluation
+
+### Insurance Claims Processing
+- **Multi-Format Support**: PDF, images, and structured claim forms with Azure Document Intelligence
+- **Automated Classification**: AI-powered categorization of claims by type, severity, and coverage area
+- **Progress Tracking**: Real-time processing status with detailed progress indicators
+- **Batch Processing**: Efficient handling of multiple claims documents simultaneously
+- **Content Extraction**: Intelligent extraction of key claim details, dates, amounts, and parties involved
+
+### Policy Document Management
+- **Policy Indexing**: Semantic indexing of insurance policy documents for fast retrieval
+- **Coverage Analysis**: AI-powered analysis of policy coverage and limitations
+- **Policy Comparison**: Side-by-side comparison of different policy terms and conditions
+- **Expiration Tracking**: Automated monitoring of policy renewal dates and coverage periods
+
+### Multi-Agent Analysis System
+- **Banking Specialists**: Financial analysts, credit risk assessors, and regulatory compliance agents
+- **Insurance Agents**: Domain-specific agents for auto, life, health, and dental claims
+- **Cross-Domain Collaboration**: Multi-agent coordination for complex financial-insurance intersections
+- **Risk Evaluation**: AI-powered risk assessment across both banking and insurance domains
 
 ### Advanced Observability & Evaluation
-- **Token Usage Tracking**: Real-time monitoring across all Azure OpenAI models
-- **Evaluation Framework**: Custom metrics for relevance, groundedness, coherence, and fluency
-- **Distributed Tracing**: OpenTelemetry integration for complete request tracking
-- **Admin Dashboard**: Comprehensive metrics visualization with real-time updates
-- **Cost Monitoring**: Detailed cost tracking and budget alerts
+- **Claims Processing Metrics**: Real-time monitoring of claims processing performance and accuracy
+- **Token Usage Tracking**: Cost monitoring across all Azure OpenAI model usage
+- **Evaluation Framework**: Custom metrics for claims assessment quality, accuracy, and compliance
+- **Audit Trails**: Comprehensive logging of all claims decisions and processing steps
+- **Performance Analytics**: Detailed analytics on processing times, approval rates, and agent performance
 
-### Multi-Agent Orchestration
-- **Semantic Kernel Integration**: Coordinated agent workflows for document processing
-- **Domain-Specific Insurance Agents**: Auto, Life, Health, Dental, and General insurance specialists
-- **MCP (Model Context Protocol)**: Standardized agent communication patterns
-- **A2A (Agent-to-Agent)**: Inter-agent collaboration for complex financial analysis
-- **Financial Document Specialists**: Dedicated agents for 10-K/10-Q report analysis
-- **Parallel Agent Execution**: Multiple agents working simultaneously for faster processing
+### Multi-Agent Claims Orchestration
+- **Semantic Kernel Integration**: Coordinated agent workflows for comprehensive claims analysis
+- **Insurance Domain Agents**: Specialized agents for Auto, Life, Health, Dental, and General insurance claims
+- **Claims Workflow Automation**: End-to-end automated claims processing with human oversight points
+- **Agent Collaboration**: Multi-agent collaboration for complex claims requiring multiple expertise areas
+- **Parallel Processing**: Multiple agents working simultaneously for faster claims resolution
 
 ### Model Context Protocol (MCP) Integration
 - **Multiple Protocols**: Support for stdin/stdout, HTTP JSON-RPC, WebSocket, and Server-Sent Events
@@ -45,39 +67,46 @@ This repo implements a complete RAG Financial POC with three interconnected use 
 - **Enhanced A2A Communication**: Advanced agent-to-agent communication patterns
 
 ### Hybrid Search & RAG Pipeline
-- **Multi-Index Search**: Support for policy, claims, and financial document indexes
-- **Vector Search**: Semantic similarity using Azure AI Search
-- **Keyword Search**: Traditional text matching for precise queries
-- **Hybrid Search**: Combined vector and keyword search with semantic ranking
-- **Citation Management**: Comprehensive source tracking and inline citations
-- **Financial Context**: Industry-specific prompt engineering and chunking strategies
+- **Dual-Index Architecture**: Separate indexes for policy documents and claims documents for optimized search
+- **Semantic Search**: Vector-based similarity search for finding relevant policy clauses and similar claims
+- **Keyword Search**: Precise text matching for specific policy numbers, claim IDs, and dates
+- **Hybrid Search**: Combined semantic and keyword search with intelligent ranking
+- **Source Citation**: Automatic citation of policy sections and claim documents supporting decisions
+- **Insurance Context**: Domain-specific prompt engineering optimized for insurance terminology and workflows
 
 ### Azure AI Foundry Integration
-- **Agent Deployment**: Native Azure AI Foundry agent deployment with tools
-- **Tool Integration**: Seamless integration of Azure AI Search, Bing Search, and Knowledge Base tools
-- **Connection Management**: Automatic creation and management of Azure service connections
-- **Agent Instructions**: Specialized instructions for different agent types and domains
-- **Deployment Orchestration**: Automated deployment process with health monitoring
+- **Claims Agent Deployment**: Pre-configured insurance claims agents deployed through Azure AI Foundry
+- **Insurance Tools Integration**: Native integration with insurance-specific tools and databases
+- **Claims Workflow Management**: Automated orchestration of claims processing workflows
+- **Agent Specialization**: Customized agent instructions for different insurance domains and claim types
+- **Compliance Monitoring**: Built-in compliance checking and regulatory requirement validation
 
 ## Architecture
 
 ### Backend Services (Python 3.11)
-- **FastAPI**: RESTful API with automatic OpenAPI documentation
-- **Azure AI Search**: Vector store with hybrid search and semantic ranking across multiple indexes
-- **Azure OpenAI**: GPT-4, GPT-4-Turbo, and embedding models
-- **Azure Cosmos DB**: Session history and evaluation results storage
-- **Azure Document Intelligence**: Advanced document processing and extraction
-- **Azure AI Foundry**: Project-based AI model deployment and management
-- **Semantic Kernel**: Multi-agent orchestration framework
-- **Multi-Agent Orchestrator**: Domain-specific agent coordination and parallel execution
+- **FastAPI**: RESTful API for claims processing and policy management
+- **Azure AI Search**: Dual-index vector store (policy-documents, claims-documents) with hybrid search
+- **Azure OpenAI**: GPT-4 models for claims analysis and policy interpretation
+- **Azure Document Intelligence**: Advanced processing of claim forms, policy documents, and supporting materials
+- **Azure AI Foundry**: Insurance domain-specific AI agents and model deployment
+- **Semantic Kernel**: Claims workflow orchestration and multi-agent coordination
+- **Progress Tracking**: Real-time status updates for document processing and claims evaluation
 
 ### Frontend Application
-- **React + TypeScript**: Modern, responsive web interface
-- **Vite**: Fast development server and optimized builds
-- **ChatGPT-like UI**: Intuitive chat interface inspired by open-webui
-- **Admin Dashboard**: Real-time observability metrics and system monitoring
-- **Citation Preview**: Interactive document source navigation
-- **Multi-Domain Support**: Banking, insurance, and claims interfaces
+- **React + TypeScript**: Modern, responsive interface serving both banking and insurance professionals
+- **Vite**: Fast development and production builds
+- **Multi-Domain Interface**: Separate optimized views for banking and insurance workflows
+- **Role-Based Access**: Specialized interfaces for different user personas in each domain
+
+#### Banking Interface Views
+- **Customer Portal**: Investment research tools and financial document access for retail/institutional clients
+- **Analyst Dashboard**: Comprehensive financial analysis tools, SEC document research, and investment insights
+- **Admin Console**: System administration, user management, and regulatory compliance monitoring
+
+#### Insurance Interface Views  
+- **Customer Portal**: Claims submission, policy review, and coverage information for policyholders
+- **Underwriter Dashboard**: Claims assessment tools, policy analysis, and risk evaluation interfaces
+- **Admin Console**: Claims processing oversight, agent performance monitoring, and system metrics
 
 ## Quick Start
 
@@ -113,46 +142,54 @@ npm run dev
 
 ## Configuration
 
-### Multi-Domain Document Processing
+### Multi-Domain Document Processing & Routing
 
-The system now supports multiple domains with intelligent index routing:
+The system intelligently routes documents to specialized indexes based on domain and document type:
 
-| Domain | Document Types | Target Index | Use Case |
-|--------|---------------|--------------|----------|
-| **Banking** | SEC filings (10-K, 10-Q, 8-K) | `financial-documents` | Financial analysis and reporting |
-| **Insurance** | Policy documents | `policy-documents` | Policy analysis and management |
-| **Claims** | Claim forms and reports | `claims-documents` | Claims processing and assessment |
+| Domain | Document Type | Examples | Target Index | Processing Features |
+|--------|---------------|----------|--------------|-------------------|
+| **Banking** | SEC Filings | 10-K, 10-Q, 8-K reports | `financial-documents` | Financial metrics extraction, trend analysis, regulatory compliance |
+| **Banking** | Research Reports | Analyst reports, earnings transcripts | `financial-documents` | Investment insights, market analysis, performance tracking |
+| **Insurance** | Policy Documents | Auto, life, health, property policies | `policy-documents` | Coverage analysis, term extraction, renewal tracking |
+| **Insurance** | Claims Documents | Claim forms, damage reports, medical records | `claims-documents` | Claim validation, fraud detection, settlement calculation |
+| **Insurance** | Supporting Evidence | Photos, receipts, estimates | `claims-documents` | Evidence analysis, damage assessment, cost validation |
 
-### Verification Level Features
+### Analysis Depth Levels
 
-The QA system supports three distinct verification levels with different performance and thoroughness characteristics:
+The system supports three levels of analysis for both banking and insurance domains:
 
-| Feature | Basic | Thorough | Comprehensive |
-|---------|-------|-----------|---------------|
-| **Source Documents** | 5 | 10 | 15 |
-| **Content Length** | 800 chars | 1200 chars | 1600 chars |
-| **Response Time** | Fastest | Standard | Thorough |
-| **Question Decomposition** | ❌ | ❌ | ✅ |
-| **Source Verification** | Basic | ✅ | ✅ |
-| **Cross-referencing** | ❌ | ✅ | ✅ |
-| **Conflict Analysis** | ❌ | ✅ | ✅ |
-| **Limitation Analysis** | ❌ | ❌ | ✅ |
-| **Sub-question Analysis** | ❌ | ❌ | ✅ |
-| **Use Case** | Quick answers | Standard analysis | Complex investigation |
+#### Banking Analysis Levels
+| Feature | Quick Analysis | Standard Research | Comprehensive Investigation |
+|---------|----------------|------------------|----------------------------|
+| **Documents Analyzed** | 3-5 SEC filings | 8-12 financial documents | 15+ comprehensive sources |
+| **Analysis Depth** | Key metrics extraction | Full financial analysis | Multi-period trend analysis |
+| **Processing Time** | Under 30 seconds | 1-2 minutes | 3-5 minutes |
+| **Risk Assessment** | Basic ratios | ✅ Advanced metrics | ✅ Comprehensive modeling |
+| **Peer Comparison** | ❌ | ✅ | ✅ |
+| **Trend Analysis** | ❌ | ✅ | ✅ |
+| **Regulatory Analysis** | ❌ | ❌ | ✅ |
+| **Multi-Agent Collaboration** | ❌ | ❌ | ✅ |
+| **Use Case** | Quick research | Investment analysis | Due diligence |
 
-**Basic Verification**: Speed-optimized for simple questions requiring quick answers with essential information and citations.
-
-**Thorough Verification**: Balanced approach with comprehensive analysis, source verification, and conflict identification for standard financial research.
-
-**Comprehensive Verification**: Exhaustive deep analysis with question decomposition, multi-angle investigation, and detailed limitation analysis for complex financial questions.
+#### Insurance Analysis Levels  
+| Feature | Quick Assessment | Standard Review | Comprehensive Investigation |
+|---------|-----------------|-----------------|---------------------------|
+| **Policy Documents Reviewed** | 3-5 | 8-10 | 12-15 |
+| **Analysis Depth** | Basic coverage check | Full policy analysis | Complete investigation |
+| **Processing Time** | Under 30 seconds | 1-2 minutes | 3-5 minutes |
+| **Fraud Detection** | Basic flags | ✅ Advanced | ✅ Comprehensive |
+| **Policy Cross-referencing** | ❌ | ✅ | ✅ |
+| **Similar Claims Analysis** | ❌ | ✅ | ✅ |
+| **Coverage Gap Analysis** | ❌ | ❌ | ✅ |
+| **Multi-Agent Collaboration** | ❌ | ❌ | ✅ |
+| **Use Case** | Initial triage | Standard claims | Complex/disputed claims |
 
 ### Azure Services Setup
-1. **Azure AI Foundry**: Create project with Foundry Project approach
-2. **Azure OpenAI**: Deploy GPT-4, GPT-4-Turbo, and embedding models
-3. **Azure AI Search**: Configure with vector search and semantic ranking across multiple indexes
-4. **Azure Cosmos DB**: Set up containers for sessions and evaluations
-5. **Azure Document Intelligence**: Enable for financial document processing
-6. **Azure Application Insights**: Configure for observability and tracing
+1. **Azure AI Foundry**: Create projects with both banking and insurance domain agents and specialized tools
+2. **Azure OpenAI**: Deploy GPT-4 models optimized for financial analysis, insurance claims, and policy interpretation
+3. **Azure AI Search**: Configure multi-index architecture (financial-documents, policy-documents, claims-documents) with domain-specific vector search
+4. **Azure Document Intelligence**: Enable for processing SEC filings, financial reports, claim forms, and policy documents
+5. **Azure Application Insights**: Configure for comprehensive monitoring across both banking and insurance workflows
 
 ### Environment Configuration
 See detailed configuration in:
@@ -171,54 +208,82 @@ The FastAPI backend provides comprehensive API documentation:
 
 ### Supported Document Types
 
-#### Banking Domain (SEC Documents)
-- **10-K Annual Reports**: Complete financial statements and analysis
-- **10-Q Quarterly Reports**: Quarterly financial updates
-- **8-K Current Reports**: Material events and corporate changes
-- **Proxy Statements**: Governance and executive compensation
-- **Earnings Transcripts**: Quarterly earnings call transcripts
+#### Banking & Financial Documents
+- **SEC Filings**: 10-K annual reports, 10-Q quarterly reports, 8-K current reports
+- **Financial Statements**: Balance sheets, income statements, cash flow statements
+- **Analyst Reports**: Equity research reports, investment recommendations, market analysis
+- **Earnings Materials**: Earnings transcripts, investor presentations, guidance updates
+- **Regulatory Documents**: Proxy statements, regulatory filings, compliance reports
 
-#### Insurance Domain
-- **Policy Documents**: Auto, life, health, and dental insurance policies
-- **Endorsements**: Policy modifications and updates
-- **Rate Schedules**: Premium calculations and pricing
-- **Underwriting Guidelines**: Risk assessment criteria
+#### Insurance Policy Documents
+- **Auto Insurance Policies**: Comprehensive, collision, liability coverage documents
+- **Life Insurance Policies**: Term life, whole life, universal life policies
+- **Health Insurance Plans**: Medical, dental, vision coverage documents
+- **Property Insurance**: Homeowners, renters, commercial property policies
+- **Policy Amendments**: Endorsements, riders, and policy modifications
 
-#### Claims Domain
-- **Claim Forms**: Customer claim submissions
-- **Damage Reports**: Property and vehicle damage assessments
-- **Medical Reports**: Health and dental claim documentation
-- **Investigation Reports**: Claims investigation findings
+#### Insurance Claims Documents
+- **Claim Forms**: ACORD forms, proprietary claim submission forms
+- **Supporting Evidence**: Photos, receipts, estimates, invoices
+- **Medical Documentation**: Medical reports, bills, treatment records
+- **Damage Assessments**: Vehicle damage reports, property inspection reports
+- **Investigation Reports**: Claims adjuster reports and investigation findings
 
-### Intelligent Index Routing
+#### Administrative Documents
+- **Correspondence**: Letters, emails, and communication records across both domains
+- **Legal Documents**: Court filings, legal notices, settlement agreements
+- **Third-Party Reports**: Credit reports, police reports, accident reports, expert opinions
 
-The system automatically routes documents to appropriate indexes based on:
-- **Domain Classification**: Banking, insurance, or claims
-- **Document Type**: Policy, claim, or financial document
-- **Content Analysis**: AI-powered document classification
-- **Metadata Extraction**: Automatic metadata enrichment
+### Intelligent Multi-Domain Document Routing
 
-### Chunking Strategy
-- **Hierarchical Chunking**: Section-aware document segmentation
-- **Domain-Specific Context**: Industry-specific chunk boundaries
-- **Overlap Management**: Intelligent chunk overlap for context preservation
-- **Metadata Enrichment**: Document type, section, and page number tracking
+The system automatically routes documents to appropriate indexes using:
+- **Domain Classification**: AI-powered identification of banking vs. insurance documents
+- **Content Classification**: Automatic categorization of SEC filings, policies, claims, and supporting documents
+- **Form Recognition**: Detection of standard forms (SEC forms, ACORD insurance forms, etc.)
+- **Metadata Extraction**: Document-specific identifiers (CIK numbers, policy numbers, claim IDs, etc.)
+- **Upload Context**: User-specified domain and document type parameters
+
+### Domain-Optimized Chunking Strategies
+
+#### Banking Document Chunking
+- **SEC Filing Structure**: Intelligent segmentation by sections (Business, Risk Factors, Financial Data, etc.)
+- **Financial Statement Awareness**: Preservation of tabular data and financial metrics relationships
+- **Regulatory Section Recognition**: Specialized handling of regulatory disclosures and compliance sections
+- **Temporal Analysis**: Date-aware chunking for quarterly/annual reporting periods
+
+#### Insurance Document Chunking  
+- **Policy Section Awareness**: Intelligent segmentation by coverage sections, exclusions, and terms
+- **Claims Structure Recognition**: Chunking optimized for claim narratives, damage descriptions, and supporting evidence
+- **Cross-Reference Preservation**: Maintaining references between policy clauses and claim elements
+- **Temporal Context**: Date-aware chunking for claims timelines and policy effective periods
 
 ## Observability & Monitoring
 
-### Metrics Tracked
-- **Token Usage**: By model, user, and session
-- **Response Times**: API endpoint performance
-- **Evaluation Scores**: Relevance, groundedness, coherence
-- **System Resources**: CPU, memory, and storage utilization
-- **Error Rates**: Failed requests and error categorization
-- **Agent Performance**: Individual agent metrics and health
+### Multi-Domain Processing Metrics
 
-### Distributed Tracing
-- **OpenTelemetry**: Complete request tracing across services
-- **Azure Application Insights**: Centralized logging and monitoring
-- **Custom Spans**: Financial document processing workflows
-- **Performance Profiling**: Bottleneck identification and optimization
+#### Banking Analytics Metrics
+- **Research Efficiency**: Financial document analysis speed and thoroughness
+- **Analysis Accuracy**: Investment research quality and recommendation accuracy
+- **Regulatory Compliance**: Monitoring of regulatory document processing and compliance alerts
+- **User Engagement**: Analyst and customer usage patterns and satisfaction metrics
+
+#### Insurance Processing Metrics  
+- **Claims Processing Times**: Document ingestion, analysis, and decision times
+- **Assessment Accuracy**: Claims evaluation accuracy and audit results
+- **Throughput Metrics**: Claims processed per hour/day, document upload rates
+- **Agent Performance**: Individual insurance agent effectiveness and specialization metrics
+
+#### Cross-Domain Metrics
+- **Cost Tracking**: Token usage and processing costs across both banking and insurance operations
+- **Quality Scores**: Evaluation metrics for analysis quality, decision accuracy, and user satisfaction
+- **System Performance**: API response times, error rates, and system availability across all domains
+
+### Cross-Domain Audit & Tracing
+- **OpenTelemetry**: End-to-end tracing across banking research and insurance claims workflows
+- **Azure Application Insights**: Centralized logging for regulatory compliance in both financial and insurance sectors
+- **Complete Audit Trails**: Full tracking from document submission to analysis completion across all domains
+- **Decision Transparency**: Detailed logging of AI decisions and reasoning for regulatory compliance (SEC, insurance commissions)
+- **Domain-Specific Compliance**: Specialized audit trails for banking regulations (SOX, FINRA) and insurance regulations (state insurance codes)
 
 ## Model Context Protocol (MCP) Server
 
@@ -270,13 +335,23 @@ Set `DURABLE_FUNCTIONS_BASE_URL` and optionally `DURABLE_FUNCTIONS_API_KEY`.
 
 ### Available MCP Tools
 
-1. **answer_financial_question** - Comprehensive Q&A with RAG (streaming supported)
-2. **search_financial_documents** - Knowledge base search (streaming supported)
-3. **verify_source_credibility** - Source reliability assessment
-4. **coordinate_multi_agent_analysis** - Multi-agent coordination (streaming supported)
-5. **get_knowledge_base_stats** - System health and statistics
-6. **deploy_insurance_agent** - Deploy domain-specific insurance agents
-7. **process_insurance_claim** - Process insurance claims with specialized agents
+#### Banking & Financial Analysis Tools
+1. **analyze_financial_documents** - Comprehensive SEC filing and financial statement analysis (streaming supported)
+2. **search_financial_database** - Financial document search and investment research
+3. **extract_financial_metrics** - AI-powered extraction of key financial indicators and ratios
+4. **compare_companies** - Multi-company financial comparison and peer analysis
+5. **assess_investment_risk** - Financial risk analysis and creditworthiness evaluation
+
+#### Insurance & Claims Tools  
+6. **process_insurance_claim** - Comprehensive claims analysis and assessment (streaming supported)
+7. **search_policy_documents** - Policy knowledge base search and coverage analysis
+8. **analyze_claim_documents** - AI-powered analysis of submitted claim materials
+9. **validate_coverage** - Policy coverage validation against submitted claims
+10. **assess_fraud_risk** - Fraud detection and risk assessment for claims
+
+#### Cross-Domain Tools
+11. **coordinate_multi_domain_agents** - Multi-agent coordination across banking and insurance domains
+12. **get_system_statistics** - Processing metrics and system performance across all domains
 
 See [mcp_server/README.md](./mcp_server/README.md) for complete documentation.
 
@@ -284,12 +359,24 @@ See [mcp_server/README.md](./mcp_server/README.md) for complete documentation.
 
 The system includes a sophisticated multi-agent orchestration system with domain-specific agents. See [AGENTS_README.md](./AGENTS_README.md) for comprehensive documentation.
 
-### Key Agent Features
-- **Domain-Specific Agents**: Auto, Life, Health, Dental, and General insurance specialists
-- **Parallel Execution**: Multiple agents working simultaneously
-- **Semantic Kernel Integration**: Advanced orchestration and planning
-- **Tool Integration**: Azure AI Search, Bing Search, and Knowledge Base tools
-- **Azure AI Foundry Deployment**: Native deployment with integrated tools
+### Multi-Domain Agent Capabilities
+
+#### Banking Domain Agents
+- **Financial Analysis Specialists**: Equity research, credit analysis, and investment advisory agents
+- **Regulatory Compliance Agents**: SEC filing analysis and regulatory monitoring specialists
+- **Risk Assessment Agents**: Credit risk, market risk, and operational risk evaluation
+- **Research Automation**: Automated financial research workflows and investment thesis development
+
+#### Insurance Domain Agents
+- **Claims Specialists**: Auto, Life, Health, Dental, and General insurance claims agents
+- **Underwriting Agents**: Risk assessment and policy evaluation specialists
+- **Fraud Detection Agents**: Advanced pattern recognition and suspicious activity identification
+- **Settlement Calculation**: Automated settlement calculations based on policy terms and damage assessment
+
+#### Cross-Domain Capabilities
+- **Multi-Agent Orchestration**: Coordinated workflows between banking and insurance agents
+- **Regulatory Compliance**: Unified compliance monitoring across financial and insurance regulations
+- **Customer Service Integration**: Seamless customer support across banking and insurance products
 
 ## Support & Documentation
 

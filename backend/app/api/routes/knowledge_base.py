@@ -117,6 +117,7 @@ async def update_knowledge_base(request: KnowledgeBaseUpdateRequest):
 
 @router.get("/documents")
 async def list_documents(
+    request: Request,
     document_type: Optional[str] = None,
     status: Optional[str] = None,
     limit: int = 100,
@@ -135,10 +136,13 @@ async def list_documents(
             return {"documents": [], "status": "azure_not_configured"}
 
         try:
-            azure_manager = AzureServiceManager()
-            await azure_manager.initialize()
+            # Use shared Azure manager from app state to avoid creating new instances
+            azure_manager = getattr(request.app.state, 'azure_manager', None)
+            if not azure_manager:
+                logger.error("Azure services not initialized in app state")
+                return {"documents": [], "status": "azure_not_configured"}
         except Exception as azure_init_error:
-            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            logger.warning(f"Failed to access Azure services: {azure_init_error}")
             return {"documents": [], "status": "azure_initialization_failed"}
 
         # Resolve indexes to list from
@@ -181,7 +185,7 @@ async def list_documents(
         return {"documents": [], "status": "error", "error_message": str(e)}
 
 @router.get("/recent-claims")
-async def get_recent_claims(limit: int = 10):
+async def get_recent_claims(request: Request, limit: int = 10):
     """Get recent claims for dashboard display"""
     try:
         observability.track_request("get_recent_claims")
@@ -194,10 +198,13 @@ async def get_recent_claims(limit: int = 10):
             return {"claims": [], "status": "azure_not_configured"}
 
         try:
-            azure_manager = AzureServiceManager()
-            await azure_manager.initialize()
+            # Use shared Azure manager from app state to avoid creating new instances
+            azure_manager = getattr(request.app.state, 'azure_manager', None)
+            if not azure_manager:
+                logger.error("Azure services not initialized in app state")
+                return {"claims": [], "status": "azure_not_configured"}
         except Exception as azure_init_error:
-            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            logger.warning(f"Failed to access Azure services: {azure_init_error}")
             return {"claims": [], "status": "azure_initialization_failed"}
 
         # Get claims from the claims index
@@ -257,7 +264,7 @@ async def get_recent_claims(limit: int = 10):
         return {"claims": [], "status": "error", "error_message": str(e)}
 
 @router.get("/recent-policies")
-async def get_recent_policies(limit: int = 10):
+async def get_recent_policies(request: Request, limit: int = 10):
     """Get recent policies for dashboard display"""
     try:
         observability.track_request("get_recent_policies")
@@ -270,10 +277,13 @@ async def get_recent_policies(limit: int = 10):
             return {"policies": [], "status": "azure_not_configured"}
 
         try:
-            azure_manager = AzureServiceManager()
-            await azure_manager.initialize()
+            # Use shared Azure manager from app state to avoid creating new instances
+            azure_manager = getattr(request.app.state, 'azure_manager', None)
+            if not azure_manager:
+                logger.error("Azure services not initialized in app state")
+                return {"policies": [], "status": "azure_not_configured"}
         except Exception as azure_init_error:
-            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            logger.warning(f"Failed to access Azure services: {azure_init_error}")
             return {"policies": [], "status": "azure_initialization_failed"}
 
         # Get policies from the policy index
@@ -562,7 +572,7 @@ async def get_document(document_id: str):
         raise HTTPException(status_code=500, detail="Failed to retrieve document")
 
 @router.get("/documents/{document_id}/chunks")
-async def get_document_chunks(document_id: str, index: str = "policy"):
+async def get_document_chunks(request: Request, document_id: str, index: str = "policy"):
     try:
         # Check if Azure services are configured
         if not (settings.AZURE_SEARCH_SERVICE_NAME and 
@@ -572,10 +582,13 @@ async def get_document_chunks(document_id: str, index: str = "policy"):
             return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "azure_not_configured"}
 
         try:
-            azure_manager = AzureServiceManager()
-            await azure_manager.initialize()
+            # Use shared Azure manager from app state to avoid creating new instances
+            azure_manager = getattr(request.app.state, 'azure_manager', None)
+            if not azure_manager:
+                logger.error("Azure services not initialized in app state")
+                return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "azure_not_configured"}
         except Exception as azure_init_error:
-            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            logger.warning(f"Failed to access Azure services: {azure_init_error}")
             return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "azure_initialization_failed"}
 
         ix_name = settings.AZURE_SEARCH_POLICY_INDEX_NAME if index.lower() == "policy" else settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
@@ -592,7 +605,7 @@ async def get_document_chunks(document_id: str, index: str = "policy"):
         return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "error", "error_message": str(e)}
 
 @router.get("/documents/{document_id}/chunk-visualization")
-async def get_policy_claims_chunk_visualization(document_id: str, index: str = "policy"):
+async def get_policy_claims_chunk_visualization(request: Request, document_id: str, index: str = "policy"):
     """Return enhanced SEC-style chunk visualization payload for policy/claims documents.
     Provides comprehensive document analysis including detailed statistics,
     section breakdown, and rich metadata similar to SEC document visualization.
@@ -613,10 +626,18 @@ async def get_policy_claims_chunk_visualization(document_id: str, index: str = "
             }
 
         try:
-            azure_manager = AzureServiceManager()
-            await azure_manager.initialize()
+            # Use shared Azure manager from app state to avoid creating new instances
+            azure_manager = getattr(request.app.state, 'azure_manager', None)
+            if not azure_manager:
+                logger.error("Azure services not initialized in app state")
+                return {
+                    "document_info": {"document_id": document_id, "title": document_id, "index": index},
+                    "chunks": [],
+                    "stats": {"total_chunks": 0, "avg_length": 0},
+                    "status": "azure_not_configured"
+                }
         except Exception as azure_init_error:
-            logger.warning(f"Failed to initialize Azure services: {azure_init_error}")
+            logger.warning(f"Failed to access Azure services: {azure_init_error}")
             return {
                 "document_info": {"document_id": document_id, "title": document_id, "index": index},
                 "chunks": [],

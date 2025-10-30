@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Financial RAG MCP Server
+Financial & Insurance Analysis MCP Server
 
-A Model Context Protocol (MCP) server for financial question answering
-using our RAG system. This server implements the MCP specification
-and can be used by Claude, VS Code, and other MCP clients.
+A Model Context Protocol (MCP) server for dual-domain financial and insurance 
+analysis using our RAG system. This server implements the MCP specification
+and can be used by Claude, VS Code, and other MCP clients for both banking
+and insurance workflows.
 
 Protocol: https://spec.modelcontextprotocol.io/
 """
@@ -61,9 +62,10 @@ class MCPResponse:
             response["result"] = self.result
         return response
 
-class FinancialRAGMCPServer:
+class FinancialInsuranceMCPServer:
     """
-    MCP Server for Financial RAG System following MCP Protocol specification
+    MCP Server for Financial & Insurance Analysis System following MCP Protocol specification
+    Supports both banking/financial analysis and insurance claims processing
     """
     
     def __init__(self):
@@ -77,10 +79,10 @@ class FinancialRAGMCPServer:
         
         # MCP server info
         self.server_info = {
-            "name": "financial-rag-server",
+            "name": "financial-insurance-analysis-server",
             "version": "1.0.0",
-            "description": "Financial Question Answering using RAG and Multi-Agent System with Insurance Support",
-            "author": "AgenticRAG Team",
+            "description": "Dual-domain Financial & Insurance Analysis using RAG and Multi-Agent System",
+            "author": "AI Financial & Insurance Platform Team",
             "license": "MIT",
             "capabilities": {
                 "tools": True,
@@ -122,146 +124,147 @@ class FinancialRAGMCPServer:
             raise
     
     def get_available_tools(self) -> List[Dict[str, Any]]:
-        """Return list of available MCP tools"""
+        """Return list of available MCP tools for both banking and insurance domains"""
         return [
+            # Banking & Financial Analysis Tools
             {
-                "name": "answer_financial_question",
-                "description": "Answer financial questions using RAG and multi-agent system",
+                "name": "analyze_financial_documents",
+                "description": "Comprehensive SEC filing and financial statement analysis",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "question": {
-                            "type": "string",
-                            "description": "Financial question to answer"
+                        "documents": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of financial documents to analyze (CIK numbers, filing URLs, or document IDs)"
                         },
-                        "context": {
+                        "analysis_type": {
                             "type": "string",
-                            "description": "Additional context for the question",
-                            "default": ""
+                            "enum": ["quick", "standard", "comprehensive"],
+                            "description": "Depth of financial analysis",
+                            "default": "standard"
                         },
-                        "verification_level": {
-                            "type": "string",
-                            "enum": ["basic", "thorough", "comprehensive"],
-                            "description": "Level of verification and analysis",
-                            "default": "thorough"
-                        },
-                        "use_multi_agent": {
-                            "type": "boolean",
-                            "description": "Whether to use multi-agent orchestration",
-                            "default": True
+                        "metrics": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Specific financial metrics to extract",
+                            "default": []
                         }
                     },
-                    "required": ["question"]
+                    "required": ["documents"]
                 }
             },
             {
-                "name": "search_financial_documents",
-                "description": "Search financial documents in the knowledge base",
+                "name": "search_financial_database",
+                "description": "Financial document search and investment research",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "Search query"
+                            "description": "Search query for financial documents"
+                        },
+                        "document_types": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Types of financial documents to search (10-K, 10-Q, 8-K, etc.)",
+                            "default": []
+                        },
+                        "companies": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Company names or ticker symbols to filter by",
+                            "default": []
                         },
                         "top_k": {
                             "type": "integer",
                             "description": "Number of results to return",
                             "default": 10
-                        },
-                        "filters": {
-                            "type": "object",
-                            "description": "Search filters",
-                            "default": {}
                         }
                     },
                     "required": ["query"]
                 }
             },
             {
-                "name": "verify_source_credibility",
-                "description": "Verify the credibility of information sources",
+                "name": "extract_financial_metrics",
+                "description": "AI-powered extraction of key financial indicators and ratios",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "content": {
+                        "company": {
                             "type": "string",
-                            "description": "Content to verify"
+                            "description": "Company name or ticker symbol"
                         },
-                        "sources": {
+                        "metrics": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "List of sources to check against"
+                            "description": "Specific metrics to extract (revenue, profit margins, debt ratios, etc.)"
+                        },
+                        "time_period": {
+                            "type": "string",
+                            "description": "Time period for metrics (latest, annual, quarterly)",
+                            "default": "latest"
                         }
                     },
-                    "required": ["content"]
+                    "required": ["company", "metrics"]
                 }
             },
             {
-                "name": "get_knowledge_base_stats",
-                "description": "Get statistics about the knowledge base",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "additionalProperties": False
-                }
-            },
-            {
-                "name": "coordinate_multi_agent_analysis",
-                "description": "Coordinate multiple agents for comprehensive financial analysis",
+                "name": "compare_companies",
+                "description": "Multi-company financial comparison and peer analysis",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "request_type": {
-                            "type": "string",
-                            "description": "Type of analysis request"
-                        },
-                        "content": {
-                            "type": "string", 
-                            "description": "Content or question to analyze"
-                        },
-                        "requirements": {
-                            "type": "object",
-                            "description": "Specific requirements for the analysis",
-                            "default": {}
-                        }
-                    },
-                    "required": ["request_type", "content"]
-                }
-            },
-            {
-                "name": "deploy_insurance_agent",
-                "description": "Deploy a domain-specific insurance agent",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "agent_name": {
-                            "type": "string",
-                            "description": "Name for the deployed agent"
-                        },
-                        "agent_type": {
-                            "type": "string",
-                            "enum": ["auto", "life", "health", "dental", "general", "risk_calculation"],
-                            "description": "Type of insurance agent to deploy"
-                        },
-                        "tools": {
+                        "companies": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Tools to enable for the agent",
-                            "default": ["azure_search", "knowledge_base", "code_interpreter"]
+                            "description": "List of companies to compare (names or ticker symbols)"
                         },
-                        "instructions": {
+                        "comparison_metrics": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Metrics to compare across companies",
+                            "default": ["revenue", "profit_margin", "debt_ratio", "roe"]
+                        },
+                        "analysis_period": {
                             "type": "string",
-                            "description": "Custom instructions for the agent",
-                            "default": ""
+                            "description": "Time period for comparison",
+                            "default": "latest_annual"
                         }
                     },
-                    "required": ["agent_name", "agent_type"]
+                    "required": ["companies"]
                 }
             },
+            {
+                "name": "assess_investment_risk",
+                "description": "Financial risk analysis and creditworthiness evaluation",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "entity": {
+                            "type": "string",
+                            "description": "Company or entity to assess"
+                        },
+                        "risk_factors": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Specific risk factors to evaluate",
+                            "default": ["credit", "market", "operational", "regulatory"]
+                        },
+                        "assessment_depth": {
+                            "type": "string",
+                            "enum": ["basic", "thorough", "comprehensive"],
+                            "description": "Depth of risk assessment",
+                            "default": "thorough"
+                        }
+                    },
+                    "required": ["entity"]
+                }
+            },
+            # Insurance & Claims Tools
             {
                 "name": "process_insurance_claim",
-                "description": "Process insurance claims using specialized agents",
+                "description": "Comprehensive claims analysis and assessment",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -288,71 +291,159 @@ class FinancialRAGMCPServer:
                 }
             },
             {
-                "name": "analyze_insurance_policy",
-                "description": "Analyze insurance policies using domain-specific agents",
+                "name": "search_policy_documents",
+                "description": "Policy knowledge base search and coverage analysis",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "domain": {
+                        "query": {
                             "type": "string",
-                            "enum": ["auto", "life", "health", "dental", "general", "risk_calculation"],
-                            "description": "Insurance domain"
+                            "description": "Search query for policy documents"
                         },
-                        "policy_data": {
-                            "type": "object",
-                            "description": "Policy information and coverage details"
+                        "policy_types": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Types of policies to search (auto, life, health, etc.)",
+                            "default": []
+                        },
+                        "coverage_areas": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Specific coverage areas to focus on",
+                            "default": []
+                        },
+                        "top_k": {
+                            "type": "integer",
+                            "description": "Number of results to return",
+                            "default": 10
+                        }
+                    },
+                    "required": ["query"]
+                }
+            },
+            {
+                "name": "analyze_claim_documents",
+                "description": "AI-powered analysis of submitted claim materials",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "documents": {
+                            "type": "array",
+                            "items": {"type": "object"},
+                            "description": "Claim documents to analyze (forms, receipts, reports, etc.)"
                         },
                         "analysis_type": {
                             "type": "string",
-                            "enum": ["basic", "comprehensive", "risk_assessment"],
+                            "enum": ["damage_assessment", "fraud_detection", "coverage_validation", "comprehensive"],
                             "description": "Type of analysis to perform",
                             "default": "comprehensive"
                         },
-                        "parallel_execution": {
-                            "type": "boolean",
-                            "description": "Whether to use parallel agent execution",
-                            "default": True
+                        "claim_context": {
+                            "type": "object",
+                            "description": "Additional context about the claim",
+                            "default": {}
                         }
                     },
-                    "required": ["domain", "policy_data"]
+                    "required": ["documents"]
                 }
             },
             {
-                "name": "get_insurance_agent_status",
-                "description": "Get status and health of insurance agents",
+                "name": "validate_coverage",
+                "description": "Policy coverage validation against submitted claims",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "agent_name": {
+                        "policy_id": {
                             "type": "string",
-                            "description": "Name of the agent to check",
-                            "default": ""
+                            "description": "Policy identifier"
+                        },
+                        "claim_details": {
+                            "type": "object",
+                            "description": "Details of the claim to validate"
+                        },
+                        "validation_level": {
+                            "type": "string",
+                            "enum": ["basic", "thorough", "comprehensive"],
+                            "description": "Level of coverage validation",
+                            "default": "thorough"
                         }
-                    }
+                    },
+                    "required": ["policy_id", "claim_details"]
                 }
             },
             {
-                "name": "calculate_claim_risk",
-                "description": "Calculate risk of approving an insurance claim based on policy coverage",
+                "name": "assess_fraud_risk",
+                "description": "Fraud detection and risk assessment for claims",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "claim_data": {
                             "type": "object",
-                            "description": "Claim information including amount, policyholder, and policy number"
+                            "description": "Complete claim information for fraud assessment"
                         },
-                        "policy_id": {
-                            "type": "string",
-                            "description": "Optional policy ID for direct matching",
-                            "default": ""
+                        "risk_indicators": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Specific fraud indicators to check",
+                            "default": []
                         },
-                        "auto_approve_threshold": {
+                        "threshold": {
                             "type": "number",
-                            "description": "Percentage of coverage below which claims are auto-approved",
-                            "default": 50
+                            "description": "Risk threshold for flagging (0-100)",
+                            "default": 70
                         }
                     },
                     "required": ["claim_data"]
+                }
+            },
+            # Cross-Domain Tools
+            {
+                "name": "coordinate_multi_domain_agents",
+                "description": "Multi-agent coordination across banking and insurance domains",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "request_type": {
+                            "type": "string",
+                            "description": "Type of cross-domain analysis request"
+                        },
+                        "content": {
+                            "type": "string", 
+                            "description": "Content or question requiring multi-domain expertise"
+                        },
+                        "domains": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Specific domains to involve (banking, insurance, etc.)",
+                            "default": ["banking", "insurance"]
+                        },
+                        "requirements": {
+                            "type": "object",
+                            "description": "Specific requirements for the analysis",
+                            "default": {}
+                        }
+                    },
+                    "required": ["request_type", "content"]
+                }
+            },
+            {
+                "name": "get_system_statistics",
+                "description": "Processing metrics and system performance across all domains",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "domains": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Domains to include in statistics",
+                            "default": ["banking", "insurance"]
+                        },
+                        "time_range": {
+                            "type": "string",
+                            "description": "Time range for statistics",
+                            "default": "24h"
+                        }
+                    }
                 }
             }
         ]
@@ -501,7 +592,50 @@ class FinancialRAGMCPServer:
             session_id = f"mcp_session_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}"
             self.logger.info(f"📋 Session ID: {session_id}")
             
-            if name == "answer_financial_question":
+            # Banking & Financial Analysis Tools
+            if name == "analyze_financial_documents":
+                self.logger.info("📊 Calling _handle_analyze_financial_documents")
+                return await self._handle_analyze_financial_documents(arguments, session_id)
+            elif name == "search_financial_database":
+                self.logger.info("🔍 Calling _handle_search_financial_database")
+                return await self._handle_search_financial_database(arguments, session_id)
+            elif name == "extract_financial_metrics":
+                self.logger.info("📈 Calling _handle_extract_financial_metrics")
+                return await self._handle_extract_financial_metrics(arguments, session_id)
+            elif name == "compare_companies":
+                self.logger.info("⚖️ Calling _handle_compare_companies")
+                return await self._handle_compare_companies(arguments, session_id)
+            elif name == "assess_investment_risk":
+                self.logger.info("⚠️ Calling _handle_assess_investment_risk")
+                return await self._handle_assess_investment_risk(arguments, session_id)
+            
+            # Insurance & Claims Tools
+            elif name == "process_insurance_claim":
+                self.logger.info("📦 Calling _handle_process_insurance_claim")
+                return await self._handle_process_insurance_claim(arguments, session_id)
+            elif name == "search_policy_documents":
+                self.logger.info("🔍 Calling _handle_search_policy_documents")
+                return await self._handle_search_policy_documents(arguments, session_id)
+            elif name == "analyze_claim_documents":
+                self.logger.info("📄 Calling _handle_analyze_claim_documents")
+                return await self._handle_analyze_claim_documents(arguments, session_id)
+            elif name == "validate_coverage":
+                self.logger.info("✅ Calling _handle_validate_coverage")
+                return await self._handle_validate_coverage(arguments, session_id)
+            elif name == "assess_fraud_risk":
+                self.logger.info("� Calling _handle_assess_fraud_risk")
+                return await self._handle_assess_fraud_risk(arguments, session_id)
+            
+            # Cross-Domain Tools
+            elif name == "coordinate_multi_domain_agents":
+                self.logger.info("🤝 Calling _handle_coordinate_multi_domain_agents")
+                return await self._handle_coordinate_multi_domain_agents(arguments, session_id)
+            elif name == "get_system_statistics":
+                self.logger.info("📊 Calling _handle_get_system_statistics")
+                return await self._handle_get_system_statistics(arguments, session_id)
+            
+            # Legacy/Compatibility Tools  
+            elif name == "answer_financial_question":
                 self.logger.info("🤖 Calling _handle_financial_question")
                 return await self._handle_financial_question(arguments, session_id)
             elif name == "search_financial_documents":
@@ -517,11 +651,8 @@ class FinancialRAGMCPServer:
                 self.logger.info("🤝 Calling _handle_multi_agent_coordination")
                 return await self._handle_multi_agent_coordination(arguments, session_id)
             elif name == "deploy_insurance_agent":
-                self.logger.info("🛠️ Calling _handle_deploy_insurance_agent")
+                self.logger.info("�️ Calling _handle_deploy_insurance_agent")
                 return await self._handle_deploy_insurance_agent(arguments, session_id)
-            elif name == "process_insurance_claim":
-                self.logger.info("📦 Calling _handle_process_insurance_claim")
-                return await self._handle_process_insurance_claim(arguments, session_id)
             elif name == "analyze_insurance_policy":
                 self.logger.info("📊 Calling _handle_analyze_insurance_policy")
                 return await self._handle_analyze_insurance_policy(arguments, session_id)
@@ -1287,7 +1418,7 @@ async def main():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    server = FinancialRAGMCPServer()
+    server = FinancialInsuranceMCPServer()
     
     try:
         # Initialize the server
