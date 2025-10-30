@@ -134,7 +134,7 @@ class Settings(BaseSettings):
     # Azure Monitor and Application Insights Configuration
     azure_monitor_connection_string: str = os.getenv("AZURE_MONITOR_CONNECTION_STRING", "")
     azure_key_vault_url: str = os.getenv("AZURE_KEY_VAULT_URL", "")
-    enable_telemetry: bool = os.getenv("ENABLE_TELEMETRY", "false").lower() == "true"
+    enable_telemetry: bool = os.getenv("ENABLE_TELEMETRY", "true").lower() == "true"
     
     mcp_enabled: bool = os.getenv("MCP_ENABLED", "true").lower() == "true"
     mcp_server_port: int = int(os.getenv("MCP_SERVER_PORT", "3001"))

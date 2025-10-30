@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager, contextmanager
 import os
 
-# Temporarily disable OpenTelemetry imports due to version conflicts
+# Enable OpenTelemetry imports - re-enabled for tracing
 try:
     from opentelemetry import trace, metrics
     from opentelemetry.sdk.trace import TracerProvider
@@ -13,10 +13,12 @@ try:
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
     from opentelemetry.trace import Status, StatusCode
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor, ConsoleSpanExporter
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
     OPENTELEMETRY_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     OPENTELEMETRY_AVAILABLE = False
-    logging.warning("OpenTelemetry packages not available. Tracing features will be limited.")
+    logging.warning(f"OpenTelemetry packages not available: {e}. Tracing features will be limited.")
     
     # Mock classes for when OpenTelemetry is not available
     class StatusCode:
@@ -28,11 +30,11 @@ except ImportError:
             self.code = code
             self.description = description
 
-AZURE_MONITOR_AVAILABLE = False  # Temporarily disabled
+AZURE_MONITOR_AVAILABLE = True  # Re-enabled for Azure tracing
 
 try:
     if OPENTELEMETRY_AVAILABLE:
-        from opentelemetry.instrumentation.openai import OpenAIInstrumentor
+        from opentelemetry.instrumentation.openai_v2 import OpenAIInstrumentor
     OPENAI_INSTRUMENTATION_AVAILABLE = OPENTELEMETRY_AVAILABLE
 except ImportError:
     OPENAI_INSTRUMENTATION_AVAILABLE = False
@@ -62,19 +64,41 @@ def setup_observability():
             meter = None
         return tracer, meter
     
-    connection_string = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
-    azure_monitor_connection_string = os.getenv("AZURE_MONITOR_CONNECTION_STRING")
-    
-    if AZURE_MONITOR_AVAILABLE and (connection_string or azure_monitor_connection_string):
-        try:
-            # configure_azure_monitor(
-            #     connection_string=connection_string or azure_monitor_connection_string
-            # )
-            logging.info("Azure Monitor configured with Application Insights")
-        except Exception as e:
-            logging.error(f"Failed to configure Azure Monitor: {e}")
-    else:
-        logging.warning("Azure Monitor temporarily disabled due to version conflicts. Some tracing features may be limited.")
+    # Set up TracerProvider and MeterProvider
+    if OPENTELEMETRY_AVAILABLE:
+        # Configure TracerProvider with console and/or OTLP exporters
+        tracer_provider = TracerProvider()
+        
+        # Add console exporter for development/debugging
+        console_exporter = ConsoleSpanExporter()
+        console_processor = SimpleSpanProcessor(console_exporter)
+        tracer_provider.add_span_processor(console_processor)
+        
+        # Check for Azure Monitor connection string for production
+        connection_string = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
+        azure_monitor_connection_string = os.getenv("AZURE_MONITOR_CONNECTION_STRING")
+        
+        if AZURE_MONITOR_AVAILABLE and (connection_string or azure_monitor_connection_string):
+            try:
+                from azure.monitor.opentelemetry import configure_azure_monitor
+                configure_azure_monitor(
+                    connection_string=connection_string or azure_monitor_connection_string
+                )
+                logging.info("Azure Monitor configured with Application Insights")
+            except Exception as e:
+                logging.error(f"Failed to configure Azure Monitor: {e}")
+                logging.info("Falling back to console tracing only")
+        else:
+            logging.info("No Azure Monitor connection string found. Using console tracing for development.")
+        
+        # Set the tracer provider
+        trace.set_tracer_provider(tracer_provider)
+        
+        # Create meter provider
+        meter_provider = MeterProvider()
+        metrics.set_meter_provider(meter_provider)
+        
+        logging.info("OpenTelemetry tracing enabled successfully")
     
     if os.getenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "false").lower() == "true":
         os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = "true"

@@ -886,12 +886,43 @@ class AzureServiceManager:
                 if not doc_id:
                     continue
                 if doc_id not in docs_by_id:
+                    # Determine document type from filename
+                    filename = rd.get("title") or rd.get("source") or doc_id
+                    doc_type = ""
+                    if filename:
+                        filename_lower = filename.lower()
+                        if "policy" in filename_lower:
+                            doc_type = "Policy"
+                        elif "claim" in filename_lower:
+                            doc_type = "Claim"
+                        elif "faq" in filename_lower:
+                            doc_type = "FAQ"
+                        elif "booklet" in filename_lower:
+                            doc_type = "Policy Booklet"
+                        elif any(term in filename_lower for term in ["agreement", "contract"]):
+                            doc_type = "Agreement"
+                        elif any(term in filename_lower for term in ["info", "document"]):
+                            doc_type = "Information"
+                        else:
+                            doc_type = "Document"
+                    
+                    # For vector schema (policy/claims), we don't have file_size or processed_at
+                    # Use current timestamp as a reasonable default for upload date
+                    upload_date = None
+                    file_size = 0
+                    
+                    # Try to get actual metadata if available
+                    if not is_vector_schema:
+                        upload_date = rd.get("processed_at")
+                        file_size = rd.get("file_size") or 0
+                    
                     docs_by_id[doc_id] = {
                         "id": doc_id,
-                        "filename": rd.get("title") or rd.get("source") or doc_id,
-                        "uploadDate": rd.get("processed_at"),
-                        "size": rd.get("file_size") or 0,
+                        "filename": filename,
+                        "uploadDate": upload_date,
+                        "size": file_size,
                         "chunks": 0,  # Will be counted below
+                        "type": doc_type,
                     }
                 # Count chunks for this document
                 docs_by_id[doc_id]["chunks"] = docs_by_id[doc_id].get("chunks", 0) + 1
@@ -909,11 +940,13 @@ class AzureServiceManager:
             is_vector_schema = index_name in {policy_ix, claims_ix}
 
             if is_vector_schema:
+                # Vector schema (policy/claims): uses parent_id for document grouping
                 filter_expr = f"parent_id eq '{document_id}'"
-                select_fields = ["chunk_id", "parent_id", "chunk", "title"]
+                select_fields = ["chunk_id", "parent_id", "content", "title", "section_type", "page_number", "citation_info"]
             else:
+                # Traditional schema (SEC/financial docs): uses document_id for document grouping
                 filter_expr = f"document_id eq '{document_id}'"
-                select_fields = ["id", "content", "metadata", "chunk_id", "section_type", "chunk_index", "source", "processed_at"]
+                select_fields = ["id", "content", "chunk_id", "section_type", "chunk_index", "source", "processed_at", "document_id", "title", "ticker", "company"]
 
             try:
                 results = await client.search(
@@ -933,14 +966,15 @@ class AzureServiceManager:
             async for r in results:
                 rd = dict(r)
                 if is_vector_schema:
-                    # Normalize to include 'content' for UI compatibility
+                    # Vector schema normalization for UI compatibility
                     normalized = {
                         **rd,
                         "id": rd.get("chunk_id") or rd.get("id"),
-                        "content": rd.get("chunk") or rd.get("content") or "",
+                        "content": rd.get("content") or "",
                     }
                     chunks.append(normalized)
                 else:
+                    # Traditional schema - return as-is, already has proper structure
                     chunks.append(rd)
             return chunks
         except Exception as e:

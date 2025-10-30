@@ -9,7 +9,8 @@ from app.models.schemas import (
     DocumentInfo,
     DocumentUploadRequest,
     DocumentUploadResponse,
-    DocumentStatus
+    DocumentStatus,
+    ChunkVisualizationResponse
 )
 from app.core.observability import observability
 from app.services.azure_services import AzureServiceManager
@@ -592,9 +593,11 @@ async def get_document_chunks(document_id: str, index: str = "policy"):
 
 @router.get("/documents/{document_id}/chunk-visualization")
 async def get_policy_claims_chunk_visualization(document_id: str, index: str = "policy"):
-    """Return SEC-style chunk visualization payload for policy/claims documents.
-    Builds ChunkVisualizationResponse with basic stats so the frontend can render
-    totals, averages, and distributions similar to SEC analysis.
+    """Return enhanced SEC-style chunk visualization payload for policy/claims documents.
+    Provides comprehensive document analysis including detailed statistics,
+    section breakdown, and rich metadata similar to SEC document visualization.
+    
+    Handles both hash-based document IDs and filenames for better frontend compatibility.
     """
     try:
         # Check if Azure services are configured
@@ -632,7 +635,52 @@ async def get_policy_claims_chunk_visualization(document_id: str, index: str = "
                 "status": "no_index_configured"
             }
 
-        raw_chunks = await azure_manager.get_chunks_for_document(ix_name, document_id, top_k=2000)
+        # Enhanced chunk retrieval with comprehensive field selection
+        try:
+            client = azure_manager.get_search_client_for_index(ix_name)
+            search_results = await client.search(
+                search_text="*",
+                select=[
+                    "chunk_id", "parent_id", "content", "title", "section_type", 
+                    "page_number", "citation_info", "processed_at", "source", 
+                    "policy_number", "coverage_limits", "deductible", "insured_name",
+                    "effective_date", "expiration_date", "line_of_business", "state"
+                ],
+                filter=f"parent_id eq '{document_id}'",
+                top=2000,
+                query_type="simple"
+            )
+            raw_chunks = [dict(r) async for r in search_results]
+        except Exception as sel_err:
+            logger.warning(f"Enhanced select failed for '{ix_name}', retrying with basic method: {sel_err}")
+            raw_chunks = await azure_manager.get_chunks_for_document(ix_name, document_id, top_k=2000)
+        
+        # If no chunks found and document_id looks like a filename, try to find the actual document ID
+        if not raw_chunks and ('.' in document_id or document_id.endswith('.pdf')):
+            logger.info(f"No chunks found for '{document_id}', searching by filename")
+            
+            # Search for documents with matching title or source
+            try:
+                search_results = await client.search(
+                    search_text="*",
+                    filter=f"title eq '{document_id}'",
+                    top=5,
+                    select=["parent_id", "title", "source"]
+                )
+                
+                # Try to find a matching document by title
+                async for result in search_results:
+                    result_dict = dict(result)
+                    parent_id = result_dict.get('parent_id')
+                    if parent_id:
+                        logger.info(f"Found document with parent_id: {parent_id} for filename: {document_id}")
+                        raw_chunks = await azure_manager.get_chunks_for_document(ix_name, parent_id, top_k=2000)
+                        if raw_chunks:
+                            document_id = parent_id  # Update document_id to the actual one
+                            break
+                            
+            except Exception as search_error:
+                logger.warning(f"Error searching for document by filename: {search_error}")
 
         if not raw_chunks:
             return {
@@ -642,56 +690,112 @@ async def get_policy_claims_chunk_visualization(document_id: str, index: str = "
                 "status": "document_not_found"
             }
 
-        # Normalize and compute stats
+        # Enhanced chunk processing and analysis
         chunks = []
         total_content_length = 0
+        page_numbers = []
+        section_types = []
+        credibility_scores = []
+        chunk_lengths = []
+        
         for i, c in enumerate(raw_chunks):
             content = c.get("content") or c.get("chunk") or ""
-            total_content_length += len(content)
-            chunks.append({
+            content_length = len(content)
+            total_content_length += content_length
+            chunk_lengths.append(content_length)
+            
+            # Collect page numbers for range analysis
+            page_num = c.get("page_number")
+            if page_num and isinstance(page_num, (int, float)):
+                page_numbers.append(int(page_num))
+            
+            # Collect section types for distribution analysis
+            section_type = c.get("section_type") or ""
+            section_type = section_type.strip() if section_type else ""
+            if section_type:
+                section_types.append(section_type)
+            
+            # Collect credibility scores
+            cred_score = c.get("credibility_score", 0)
+            if isinstance(cred_score, (int, float)):
+                credibility_scores.append(float(cred_score))
+            
+            # Enhanced chunk data with preview
+            chunk_data = {
                 "chunk_id": c.get("chunk_id") or c.get("id") or f"chunk_{i}",
-                "content": content,
-                "content_length": len(content),
-                "page_number": c.get("page_number"),
-                "section_type": c.get("section_type", ""),
-                "credibility_score": c.get("credibility_score", 0),
+                "content": content[:200] + "..." if len(content) > 200 else content,
+                "content_length": content_length,
+                "page_number": page_num,
+                "section_type": section_type or "general",
+                "credibility_score": cred_score,
                 "citation_info": c.get("citation_info", {}),
                 "search_score": c.get("@search.score", 0),
-            })
+                "chunk_index": c.get("chunk_index", i)
+            }
+            chunks.append(chunk_data)
 
-        avg_len = round(total_content_length / len(chunks), 2) if chunks else 0
-
+        # Calculate comprehensive statistics
+        avg_length = round(total_content_length / len(chunks), 2) if chunks else 0
+        
+        # Section type distribution analysis
+        section_distribution = {}
+        for section in section_types:
+            section_distribution[section] = section_distribution.get(section, 0) + 1
+        
+        # Sort sections by frequency
+        sorted_sections = sorted(section_distribution.items(), key=lambda x: x[1], reverse=True)
+        
+        # Enhanced document information with policy-specific fields
+        first_chunk = raw_chunks[0] if raw_chunks else {}
         document_info = {
             "document_id": document_id,
-            "title": raw_chunks[0].get("title") or raw_chunks[0].get("source") or document_id,
+            "title": first_chunk.get("title") or first_chunk.get("source") or document_id,
             "index": index,
-            "processed_at": raw_chunks[0].get("processed_at", ""),
-            "file_size": raw_chunks[0].get("file_size"),
+            "document_type": f"{index.title()} Document",
+            "policy_number": first_chunk.get("policy_number", ""),
+            "insured_name": first_chunk.get("insured_name", ""),
+            "coverage_limits": first_chunk.get("coverage_limits", ""),
+            "deductible": first_chunk.get("deductible", ""),
+            "effective_date": first_chunk.get("effective_date", ""),
+            "expiration_date": first_chunk.get("expiration_date", ""),
+            "line_of_business": first_chunk.get("line_of_business", ""),
+            "state": first_chunk.get("state", ""),
+            "processed_at": first_chunk.get("processed_at", ""),
             "total_chunks": len(chunks),
+            "source": first_chunk.get("source", ""),
         }
 
+        # Comprehensive chunk statistics (matching SEC format)
         chunk_stats = {
             "total_chunks": len(chunks),
-            "avg_chunk_length": avg_len,
+            "avg_chunk_length": avg_length,
             "total_content_length": total_content_length,
-            "page_range": {"min": None, "max": None},
-            "section_types": sorted(list({c.get("section_type", "") for c in raw_chunks if c.get("section_type")})),
+            "min_chunk_length": min(chunk_lengths) if chunk_lengths else 0,
+            "max_chunk_length": max(chunk_lengths) if chunk_lengths else 0,
+            "page_range": {
+                "min": min(page_numbers) if page_numbers else None,
+                "max": max(page_numbers) if page_numbers else None
+            },
+            "section_types": [section for section, _ in sorted_sections],
+            "section_distribution": dict(sorted_sections),
             "avg_credibility_score": round(
-                sum(c.get("credibility_score", 0) for c in raw_chunks) / len(raw_chunks), 3
-            ) if raw_chunks else 0,
+                sum(credibility_scores) / len(credibility_scores), 3
+            ) if credibility_scores else 0,
+            "total_sections": len(set(section_types)) if section_types else 0
         }
 
-        return {
-            "document_id": document_id,
-            "document_info": document_info,
-            "chunks": chunks,
-            "chunk_stats": chunk_stats,
-            "status": "success"
-        }
+        # Return enhanced response matching SEC visualization format
+        return ChunkVisualizationResponse(
+            document_id=document_id,
+            document_info=document_info,
+            chunks=chunks,
+            chunk_stats=chunk_stats
+        )
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error building policy/claims chunk visualization: {e}")
+        logger.error(f"Error building enhanced policy/claims chunk visualization: {e}")
         # Return graceful error response instead of 500
         return {
             "document_id": document_id,

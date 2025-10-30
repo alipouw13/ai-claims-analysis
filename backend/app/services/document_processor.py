@@ -122,17 +122,56 @@ class DocumentProcessor:
             if (metadata or {}).get('is_claim'):
                 domain = 'claim'
             text_for_chunking = extracted_content.get("content", "")
-            if domain == 'policy':
-                for c in chunk_policy_text(text_for_chunking):
-                    # Compute confidence score per chunk (best-practice: content understanding confidence)
-                    confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
-                    chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
-                    chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
-            else:
-                for c in chunk_claim_text(text_for_chunking):
-                    confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
-                    chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
-                    chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
+            
+            # Try enhanced chunking first
+            try:
+                from app.utils.policy_claim_chunker import smart_chunk_policy_text, smart_chunk_claim_text
+                
+                if domain == 'policy':
+                    enhanced_chunks = smart_chunk_policy_text(text_for_chunking)
+                    if enhanced_chunks and len(enhanced_chunks) > 0:
+                        logger.info(f"Using enhanced policy chunking: {len(enhanced_chunks)} chunks")
+                        for c in enhanced_chunks:
+                            confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
+                            chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
+                            chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
+                    else:
+                        # Fallback to original chunking
+                        logger.info("Enhanced chunking returned empty, falling back to original")
+                        for c in chunk_policy_text(text_for_chunking):
+                            confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
+                            chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
+                            chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
+                else:
+                    enhanced_chunks = smart_chunk_claim_text(text_for_chunking)
+                    if enhanced_chunks and len(enhanced_chunks) > 0:
+                        logger.info(f"Using enhanced claim chunking: {len(enhanced_chunks)} chunks")
+                        for c in enhanced_chunks:
+                            confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
+                            chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
+                            chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
+                    else:
+                        # Fallback to original chunking
+                        logger.info("Enhanced chunking returned empty, falling back to original")
+                        for c in chunk_claim_text(text_for_chunking):
+                            confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
+                            chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
+                            chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
+                            
+            except Exception as e:
+                logger.warning(f"Enhanced chunking failed, using original: {e}")
+                # Original chunking logic as fallback
+                if domain == 'policy':
+                    for c in chunk_policy_text(text_for_chunking):
+                        confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
+                        chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
+                        chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
+                else:
+                    for c in chunk_claim_text(text_for_chunking):
+                        confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
+                        chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
+                        chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
+            
             if not chunks:
                 chunks = await self._create_basic_chunks(text_for_chunking, document_id, {**(metadata or {}), **financial_info})
             logger.info(f"Step 5 COMPLETE: Created {len(chunks)} {domain} chunks")
@@ -169,19 +208,47 @@ class DocumentProcessor:
             #     logger.warning(f"Failed to upload document to storage: {e}")
             #     financial_info["storage_url"] = None
             
-            logger.info(f"Step 7: Preparing search documents...")
-            # Convert chunks to search index format and add to knowledge base
+            logger.info(f"Step 7: Preparing citation-ready search documents...")
+            # Convert chunks to search index format with enhanced citation metadata
             search_documents = []
-            for chunk in chunks:
-                # Use the correct schema for all indexes - using Content Processing Solution Accelerator pattern
-                search_doc = {
-                    "id": f"{document_id}_{chunk.chunk_id}",
-                    "parent_id": document_id,
-                    "content": chunk.content,
-                    "title": chunk.metadata.get("title", source),
-                    "content_vector": chunk.embedding,
-                }
-                search_documents.append(search_doc)
+            
+            # Use enhanced citation-ready processing for policies and claims
+            try:
+                from app.services.citation_ready_processor import CitationReadyDocumentProcessor
+                
+                citation_processor = CitationReadyDocumentProcessor(self.azure_manager)
+                
+                # Determine document type from metadata
+                document_type = "policy"  # default
+                if (metadata or {}).get('is_claim'):
+                    document_type = "claim"
+                elif 'faq' in source.lower():
+                    document_type = "faq"
+                
+                # Create citation-ready search documents
+                search_documents = await citation_processor.prepare_citation_ready_search_documents(
+                    chunks=chunks,
+                    document_id=document_id,
+                    source=source,
+                    metadata={**(metadata or {}), **financial_info},
+                    document_type=document_type
+                )
+                
+                logger.info(f"Created {len(search_documents)} citation-ready search documents")
+                
+            except Exception as e:
+                logger.warning(f"Citation-ready processing failed, using basic format: {e}")
+                # Fallback to basic search document format
+                for chunk in chunks:
+                    search_doc = {
+                        "id": f"{document_id}_{chunk.chunk_id}",
+                        "parent_id": document_id,
+                        "content": chunk.content,
+                        "title": chunk.metadata.get("title", source),
+                        "content_vector": chunk.embedding,
+                    }
+                    search_documents.append(search_doc)
+            
             logger.info(f"Step 7 COMPLETE: Prepared {len(search_documents)} search documents")
             
             logger.info(f"Step 8: Adding documents to Azure Search index...")

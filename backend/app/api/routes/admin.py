@@ -474,29 +474,130 @@ async def get_traces(
     try:
         observability.track_request("admin_traces")
         
-        # For now, return mock data since we don't have a full tracing implementation
-        traces = [
-            {
-                "trace_id": f"trace_{i}",
-                "span_id": f"span_{i}",
-                "operation_name": "qa_processing" if i % 2 == 0 else "chat_processing",
-                "start_time": (datetime.now() - timedelta(hours=i)).isoformat(),
-                "duration_ms": 1500 + (i * 100),
-                "status": "success" if i % 10 != 0 else "error",
-                "service": "qa_service" if i % 2 == 0 else "chat_service",
+        # Get actual trace data from the observability manager
+        cutoff_time = datetime.now() - timedelta(hours=hours)
+        
+        # Collect traces from different sources in the observability manager
+        traces = []
+        
+        # Add request traces (operations like qa_processing, chat_processing)
+        recent_requests = [r for r in observability.metrics_storage.get("requests", []) 
+                          if r.get("timestamp") and r["timestamp"] > cutoff_time]
+        
+        for i, req in enumerate(recent_requests[-limit:]):
+            trace_id = f"req_{req.get('session_id', i)}_{int(req['timestamp'].timestamp())}" if req.get('timestamp') else f"req_{i}"
+            traces.append({
+                "trace_id": trace_id,
+                "span_id": f"span_{trace_id}",
+                "operation_name": req.get("endpoint", "unknown_operation").replace("_", "_processing"),
+                "start_time": req["timestamp"].isoformat() if req.get("timestamp") else datetime.now().isoformat(),
+                "duration_ms": 1500,  # Default duration since requests don't track timing
+                "status": "success",
+                "service": "rag_service",
                 "tags": {
-                    "session_id": f"session_{i}",
-                    "model": "gpt-4o" if i % 3 == 0 else "gpt-35-turbo"
+                    "session_id": req.get("session_id", "unknown"),
+                    "user_id": req.get("user_id", "unknown"),
+                    "endpoint": req.get("endpoint", "unknown")
                 }
-            }
-            for i in range(min(limit, 50))
-        ]
+            })
+        
+        # Add response time traces (actual operations with timing)
+        recent_response_times = [r for r in observability.metrics_storage.get("response_times", []) 
+                               if r.get("timestamp") and r["timestamp"] > cutoff_time]
+        
+        for i, rt in enumerate(recent_response_times[-limit:]):
+            trace_id = f"rt_{rt.get('session_id', i)}_{int(rt['timestamp'].timestamp())}" if rt.get('timestamp') else f"rt_{i}"
+            traces.append({
+                "trace_id": trace_id,
+                "span_id": f"span_{trace_id}",
+                "operation_name": rt.get("endpoint", "unknown_operation"),
+                "start_time": rt["timestamp"].isoformat() if rt.get("timestamp") else datetime.now().isoformat(),
+                "duration_ms": int(rt.get("duration", 0) * 1000),  # Convert seconds to milliseconds
+                "status": "success",
+                "service": "rag_service",
+                "tags": {
+                    "session_id": rt.get("session_id", "unknown"),
+                    "model": rt.get("model", "unknown"),
+                    "endpoint": rt.get("endpoint", "unknown")
+                }
+            })
+        
+        # Add agent operation traces
+        recent_agent_ops = [op for op in observability.metrics_storage.get("agent_operations", []) 
+                          if op.get("timestamp") and op["timestamp"] > cutoff_time]
+        
+        for i, op in enumerate(recent_agent_ops[-limit:]):
+            trace_id = f"agent_{op.get('agent_id', i)}_{int(op['timestamp'].timestamp())}" if op.get('timestamp') else f"agent_{i}"
+            traces.append({
+                "trace_id": trace_id,
+                "span_id": f"span_{trace_id}",
+                "operation_name": f"{op.get('agent_type', 'unknown')}_agent_{op.get('operation', 'operation')}",
+                "start_time": op["timestamp"].isoformat() if op.get("timestamp") else datetime.now().isoformat(),
+                "duration_ms": int(op.get("duration", 0) * 1000) if op.get("duration") else 2000,
+                "status": op.get("status", "success"),
+                "service": "agent_service",
+                "tags": {
+                    "agent_type": op.get("agent_type", "unknown"),
+                "agent_id": op.get("agent_id", "unknown"),
+                    "thread_id": op.get("thread_id", "unknown"),
+                    "operation": op.get("operation", "unknown")
+                }
+            })
+        
+        # Add error traces
+        recent_errors = [e for e in observability.metrics_storage.get("errors", []) 
+                        if e.get("timestamp") and e["timestamp"] > cutoff_time]
+        
+        for i, err in enumerate(recent_errors[-20:]):  # Limit errors to 20
+            trace_id = f"error_{i}_{int(err['timestamp'].timestamp())}" if err.get('timestamp') else f"error_{i}"
+            traces.append({
+                "trace_id": trace_id,
+                "span_id": f"span_{trace_id}",
+                "operation_name": err.get("endpoint", "error_operation"),
+                "start_time": err["timestamp"].isoformat() if err.get("timestamp") else datetime.now().isoformat(),
+                "duration_ms": 500,  # Errors typically happen quickly
+                "status": "error",
+                "service": "error_service",
+                "tags": {
+                    "error_type": err.get("error_type", "unknown"),
+                    "session_id": err.get("session_id", "unknown"),
+                    "user_id": err.get("user_id", "unknown"),
+                    "endpoint": err.get("endpoint", "unknown")
+                }
+            })
+        
+        # If no real traces, provide some mock data to show the interface
+        if not traces:
+            traces = [
+                {
+                    "trace_id": f"mock_trace_{i}",
+                    "span_id": f"mock_span_{i}",
+                    "operation_name": "qa_processing" if i % 2 == 0 else "chat_processing",
+                    "start_time": (datetime.now() - timedelta(hours=i)).isoformat(),
+                    "duration_ms": 1500 + (i * 100),
+                    "status": "success" if i % 10 != 0 else "error",
+                    "service": "qa_service" if i % 2 == 0 else "chat_service",
+                    "tags": {
+                        "session_id": f"session_{i}",
+                        "model": "gpt-4o" if i % 3 == 0 else "gpt-35-turbo"
+                    }
+                }
+                for i in range(min(limit, 10))
+            ]
+        
+        # Sort traces by start time (most recent first)
+        traces.sort(key=lambda x: x["start_time"], reverse=True)
+        
+        # Limit to requested amount
+        traces = traces[:limit]
         
         return {
             "traces": traces,
             "total_count": len(traces),
             "period_hours": hours,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "data_source": "live_tracing" if any(len(observability.metrics_storage.get(k, [])) > 0 
+                                               for k in ["requests", "response_times", "agent_operations", "errors"]) else "mock_data"
         }
         
     except Exception as e:

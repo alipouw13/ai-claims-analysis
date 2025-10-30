@@ -483,44 +483,52 @@ class EvaluationService:
                 # Extract scores directly from document (not from metrics field)
                 result_scores = {}
                 
-                # Extract individual metric scores
-                if result.get("groundedness_score") is not None:
-                    score = float(result["groundedness_score"])
-                    result_scores["groundedness"] = score
-                    all_scores["groundedness"].append(score)
-                
-                if result.get("relevance_score") is not None:
-                    score = float(result["relevance_score"])
-                    result_scores["relevance"] = score
-                    all_scores["relevance"].append(score)
-                
-                if result.get("coherence_score") is not None:
-                    score = float(result["coherence_score"])
-                    result_scores["coherence"] = score
-                    all_scores["coherence"].append(score)
-                
-                if result.get("fluency_score") is not None:
-                    score = float(result["fluency_score"])
-                    result_scores["fluency"] = score
-                    all_scores["fluency"].append(score)
-                
-                # Use overall_score if available, otherwise calculate it
+                # Use overall_score to determine if this is a successful evaluation
                 overall_score = result.get("overall_score")
                 if overall_score is not None:
                     overall_score = float(overall_score)
-                elif result_scores:
-                    # Calculate overall score as average of available metrics
-                    overall_score = sum(result_scores.values()) / len(result_scores)
                 else:
                     overall_score = 0.0
                 
+                # Only include successful evaluations (overall_score > 0) in analytics
                 if overall_score > 0:
-                    all_scores["overall"].append(overall_score)
-                    session_scores[session_id].append(overall_score)
-                    rag_method_data[rag_method_name]["scores"].append(overall_score)
+                    # Extract individual metric scores only for successful evaluations
+                    if result.get("groundedness_score") is not None:
+                        score = float(result["groundedness_score"])
+                        if score > 0:  # Only include non-zero scores
+                            result_scores["groundedness"] = score
+                            all_scores["groundedness"].append(score)
                     
-                    if evaluation_timestamp and date_str in daily_data:
-                        daily_data[date_str]["scores"].append(overall_score)
+                    if result.get("relevance_score") is not None:
+                        score = float(result["relevance_score"])
+                        if score > 0:  # Only include non-zero scores
+                            result_scores["relevance"] = score
+                            all_scores["relevance"].append(score)
+                    
+                    if result.get("coherence_score") is not None:
+                        score = float(result["coherence_score"])
+                        if score > 0:  # Only include non-zero scores
+                            result_scores["coherence"] = score
+                            all_scores["coherence"].append(score)
+                    
+                    if result.get("fluency_score") is not None:
+                        score = float(result["fluency_score"])
+                        if score > 0:  # Only include non-zero scores
+                            result_scores["fluency"] = score
+                            all_scores["fluency"].append(score)
+                    
+                    # Calculate overall score if not available
+                    if overall_score == 0.0 and result_scores:
+                        overall_score = sum(result_scores.values()) / len(result_scores)
+                    
+                    # Only include in overall statistics if we have a meaningful score
+                    if overall_score > 0:
+                        all_scores["overall"].append(overall_score)
+                        session_scores[session_id].append(overall_score)
+                        rag_method_data[rag_method_name]["scores"].append(overall_score)
+                        
+                        if evaluation_timestamp and date_str in daily_data:
+                            daily_data[date_str]["scores"].append(overall_score)
             
             # Calculate averages
             average_scores = {}
