@@ -1018,6 +1018,258 @@ class FinancialInsuranceMCPServer:
         except Exception as e:
             self.logger.error(f"❌ Error in _handle_calculate_claim_risk: {e}")
             return {"error": str(e)}
+
+    # Banking & Financial Analysis Tool Handlers
+    async def _handle_analyze_financial_documents(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Analyze SEC filings and financial documents."""
+        try:
+            document_ids = arguments.get("document_ids", [])
+            analysis_type = arguments.get("analysis_type", "comprehensive")
+            
+            if not document_ids:
+                return {"error": "Missing required document_ids", "success": False}
+            
+            payload = {
+                "document_ids": document_ids,
+                "analysis_type": analysis_type,
+                "session_id": session_id
+            }
+            
+            result = await self.http_client.post(f"{self.backend_url}/analyze-financial-documents", payload)
+            return {"data": result, "success": True}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in analyze_financial_documents: {str(e)}")
+            return {"error": str(e), "success": False}
+    
+    async def _handle_search_financial_database(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Search financial documents and SEC filings."""
+        try:
+            query = arguments.get("query", "")
+            filters = arguments.get("filters", {})
+            limit = arguments.get("limit", 10)
+            
+            if not query:
+                return {"error": "Missing required query parameter", "success": False}
+            
+            payload = {
+                "query": query,
+                "filters": filters,
+                "limit": limit,
+                "session_id": session_id,
+                "index_name": "financial-documents"  # Default to financial documents
+            }
+            
+            result = await self.http_client.post(f"{self.backend_url}/search-documents", payload)
+            return {"data": result, "success": True}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in search_financial_database: {str(e)}")
+            return {"error": str(e), "success": False}
+    
+    async def _handle_extract_financial_metrics(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Extract financial metrics from documents."""
+        try:
+            document_id = arguments.get("document_id", "")
+            metrics_type = arguments.get("metrics_type", "standard")
+            
+            if not document_id:
+                return {"error": "Missing required document_id", "success": False}
+            
+            payload = {
+                "document_id": document_id,
+                "metrics_type": metrics_type,
+                "session_id": session_id
+            }
+            
+            result = await self.http_client.post(f"{self.backend_url}/extract-financial-metrics", payload)
+            return {"data": result, "success": True}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in extract_financial_metrics: {str(e)}")
+            return {"error": str(e), "success": False}
+    
+    async def _handle_compare_companies(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Compare financial performance between companies."""
+        try:
+            company_a = arguments.get("company_a", "")
+            company_b = arguments.get("company_b", "")
+            metrics = arguments.get("metrics", ["revenue", "profit", "debt"])
+            
+            if not company_a or not company_b:
+                return {"error": "Missing required company_a or company_b", "success": False}
+            
+            payload = {
+                "company_a": company_a,
+                "company_b": company_b,
+                "metrics": metrics,
+                "session_id": session_id
+            }
+            
+            result = await self.http_client.post(f"{self.backend_url}/compare-companies", payload)
+            return {"data": result, "success": True}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in compare_companies: {str(e)}")
+            return {"error": str(e), "success": False}
+    
+    async def _handle_assess_investment_risk(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Assess investment risk for financial instruments."""
+        try:
+            investment_data = arguments.get("investment_data", {})
+            risk_factors = arguments.get("risk_factors", [])
+            
+            if not investment_data:
+                return {"error": "Missing required investment_data", "success": False}
+            
+            payload = {
+                "investment_data": investment_data,
+                "risk_factors": risk_factors,
+                "session_id": session_id
+            }
+            
+            result = await self.http_client.post(f"{self.backend_url}/assess-investment-risk", payload)
+            return {"data": result, "success": True}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in assess_investment_risk: {str(e)}")
+            return {"error": str(e), "success": False}
+
+    # Insurance Tool Handlers
+    async def _handle_search_policy_documents(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Search insurance policy documents."""
+        try:
+            query = arguments.get("query", "")
+            policy_type = arguments.get("policy_type", "")
+            limit = arguments.get("limit", 10)
+            
+            if not query:
+                return {"error": "Missing required query parameter", "success": False}
+            
+            filters = {}
+            if policy_type:
+                filters["policy_type"] = policy_type
+            
+            payload = {
+                "query": query,
+                "filters": filters,
+                "limit": limit,
+                "session_id": session_id,
+                "index_name": "policy-documents"
+            }
+            
+            result = await self.http_client.post(f"{self.backend_url}/search-documents", payload)
+            return {"data": result, "success": True}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in search_policy_documents: {str(e)}")
+            return {"error": str(e), "success": False}
+    
+    async def _handle_analyze_claim_documents(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Analyze claim documents for completeness and validity."""
+        try:
+            claim_id = arguments.get("claim_id", "")
+            document_ids = arguments.get("document_ids", [])
+            
+            if not claim_id or not document_ids:
+                return {"error": "Missing required claim_id or document_ids", "success": False}
+            
+            payload = {
+                "claim_id": claim_id,
+                "document_ids": document_ids,
+                "session_id": session_id
+            }
+            
+            result = await self.http_client.post(f"{self.backend_url}/analyze-claim-documents", payload)
+            return {"data": result, "success": True}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in analyze_claim_documents: {str(e)}")
+            return {"error": str(e), "success": False}
+    
+    async def _handle_validate_coverage(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Validate insurance coverage for a claim."""
+        try:
+            claim_data = arguments.get("claim_data", {})
+            policy_id = arguments.get("policy_id", "")
+            
+            if not claim_data or not policy_id:
+                return {"error": "Missing required claim_data or policy_id", "success": False}
+            
+            payload = {
+                "claim_data": claim_data,
+                "policy_id": policy_id,
+                "session_id": session_id
+            }
+            
+            result = await self.http_client.post(f"{self.backend_url}/validate-coverage", payload)
+            return {"data": result, "success": True}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in validate_coverage: {str(e)}")
+            return {"error": str(e), "success": False}
+    
+    async def _handle_assess_fraud_risk(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Assess fraud risk for insurance claims."""
+        try:
+            claim_data = arguments.get("claim_data", {})
+            policy_history = arguments.get("policy_history", {})
+            
+            if not claim_data:
+                return {"error": "Missing required claim_data", "success": False}
+            
+            payload = {
+                "claim_data": claim_data,
+                "policy_history": policy_history,
+                "session_id": session_id
+            }
+            
+            result = await self.http_client.post(f"{self.backend_url}/assess-fraud-risk", payload)
+            return {"data": result, "success": True}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in assess_fraud_risk: {str(e)}")
+            return {"error": str(e), "success": False}
+
+    # Cross-Domain Tool Handlers
+    async def _handle_coordinate_multi_domain_agents(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Coordinate analysis across banking and insurance domains."""
+        try:
+            task_description = arguments.get("task_description", "")
+            domains = arguments.get("domains", ["banking", "insurance"])
+            
+            if not task_description:
+                return {"error": "Missing required task_description", "success": False}
+            
+            payload = {
+                "task_description": task_description,
+                "domains": domains,
+                "session_id": session_id
+            }
+            
+            result = await self.http_client.post(f"{self.backend_url}/coordinate-multi-domain", payload)
+            return {"data": result, "success": True}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in coordinate_multi_domain_agents: {str(e)}")
+            return {"error": str(e), "success": False}
+    
+    async def _handle_get_system_statistics(self, arguments: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Get comprehensive system statistics for both domains."""
+        try:
+            domains = arguments.get("domains", ["banking", "insurance"])
+            
+            payload = {
+                "domains": domains,
+                "session_id": session_id
+            }
+            
+            result = await self.http_client.post(f"{self.backend_url}/system-statistics", payload)
+            return {"data": result, "success": True}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in get_system_statistics: {str(e)}")
+            return {"error": str(e), "success": False}
     
     async def handle_resource_read(self, uri: str) -> Dict[str, Any]:
         """Handle MCP resource read requests"""
