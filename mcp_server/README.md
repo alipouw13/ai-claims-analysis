@@ -2,6 +2,8 @@
 
 > ⚠️ **IMPORTANT DISCLAIMER**: This MCP server is a **work-in-progress demonstration** and is **NOT production-ready**. It serves as an example implementation for educational and development purposes. Do not use in production environments without significant additional development, security review, and testing.
 
+> 📋 **ATTRIBUTION**: This MCP server is part of a project based on [akshata29/agenticrag](https://github.com/akshata29/agenticrag), adapted and enhanced for dual-domain banking and insurance capabilities.
+
 A Model Context Protocol (MCP) server for the dual-domain Financial & Insurance Analysis Platform, providing comprehensive banking and insurance capabilities through advanced multi-agent orchestration.
 
 ## Overview

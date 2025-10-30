@@ -2,6 +2,8 @@
 
 > ⚠️ **IMPORTANT DISCLAIMER**: This repository is a **work-in-progress demonstration** and is **NOT production-ready**. It serves as an example implementation for educational and development purposes. Do not use in production environments without significant additional development, security review, and testing.
 
+> 📋 **ATTRIBUTION**: This project is based on and extends the excellent work from [akshata29/agenticrag](https://github.com/akshata29/agenticrag). We've adapted and enhanced the original architecture to support dual-domain banking and insurance capabilities.
+
 A comprehensive financial and insurance analysis platform that leverages Azure AI services to serve both banking and insurance sectors. The system combines RAG (Retrieval-Augmented Generation), multi-agent orchestration, and advanced document processing to streamline financial analysis, insurance claims processing, and policy management workflows.
 
 ## Overview
@@ -407,6 +409,22 @@ The system includes a sophisticated multi-agent orchestration system with domain
 - **Multi-Agent Orchestration**: Coordinated workflows between banking and insurance agents
 - **Regulatory Compliance**: Unified compliance monitoring across financial and insurance regulations
 - **Customer Service Integration**: Seamless customer support across banking and insurance products
+
+## Acknowledgments
+
+This project builds upon the excellent foundation provided by [akshata29/agenticrag](https://github.com/akshata29/agenticrag). We extend our gratitude to the original contributors for their innovative work in:
+
+- **Multi-Agent RAG Architecture**: The core orchestration patterns and agent coordination mechanisms
+- **Azure AI Integration**: Comprehensive integration with Azure AI services and Document Intelligence
+- **FastAPI Backend Structure**: Well-architected API design and service patterns
+- **Evaluation Framework**: AI model evaluation and performance monitoring infrastructure
+
+**Key Enhancements in This Fork:**
+- Expanded from financial-only to dual-domain (banking + insurance) platform
+- Enhanced MCP server with 12 specialized tools for banking and insurance workflows
+- Added insurance-specific document processing and claims analysis capabilities
+- Implemented cross-domain agent coordination for complex financial-insurance scenarios
+- Updated documentation to reflect comprehensive dual-domain functionality
 
 ## Support & Documentation
 
