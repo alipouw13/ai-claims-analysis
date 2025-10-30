@@ -1,5 +1,7 @@
 # AI Financial & Insurance Analysis Platform
 
+> ⚠️ **IMPORTANT DISCLAIMER**: This repository is a **work-in-progress demonstration** and is **NOT production-ready**. It serves as an example implementation for educational and development purposes. Do not use in production environments without significant additional development, security review, and testing.
+
 A comprehensive financial and insurance analysis platform that leverages Azure AI services to serve both banking and insurance sectors. The system combines RAG (Retrieval-Augmented Generation), multi-agent orchestration, and advanced document processing to streamline financial analysis, insurance claims processing, and policy management workflows.
 
 ## Overview
@@ -15,6 +17,34 @@ This repository implements a dual-domain AI platform serving both banking and in
 1. **Intelligent Claims Processing**: Automated ingestion and analysis of claim documents with AI-powered assessment
 2. **Policy Document Management**: Comprehensive policy document storage, indexing, and retrieval with semantic search
 3. **Multi-Agent Claims Evaluation**: Specialized insurance agents for different claim types (auto, life, health, dental) working collaboratively
+
+## ⚠️ Development Status & Disclaimers
+
+### Work-in-Progress Notice
+This platform is currently in **active development** and serves as a **proof-of-concept demonstration**. Key limitations include:
+
+- **Security**: Basic authentication only - not suitable for production use
+- **Scalability**: Limited load testing and performance optimization
+- **Error Handling**: Basic error handling - needs robust production-grade error management
+- **Data Privacy**: Additional privacy controls needed for sensitive financial/insurance data
+- **Compliance**: Requires additional security audits and compliance verification for regulated industries
+- **Testing**: Needs comprehensive test coverage and integration testing
+
+### Intended Use
+- **Educational purposes** - Learning AI/ML implementation patterns
+- **Development reference** - Architecture and integration examples
+- **Prototype development** - Foundation for building production systems
+- **Research and experimentation** - Testing AI capabilities in financial/insurance domains
+
+### Production Readiness
+Before considering production use, this system would need:
+- Security hardening and authentication overhaul
+- Comprehensive logging and monitoring
+- Performance optimization and load testing
+- Regulatory compliance review
+- Data encryption and privacy controls
+- Professional security audit
+- Disaster recovery and backup strategies
 
 ## Key Features
 
