@@ -306,9 +306,9 @@ The system includes a comprehensive MCP server that can be used by Claude, VS Co
   "mcpServers": {
     "financial-rag": {
       "command": "python",
-      "args": ["path/to/agenticrag/mcp_server/main.py"],
+      "args": ["path/to/ai-claims-analysis/mcp_server/main.py"],
       "env": {
-        "PYTHONPATH": "path/to/agenticrag"
+        "PYTHONPATH": "path/to/ai-claims-analysis"
       }
     }
   }

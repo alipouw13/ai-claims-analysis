@@ -1,35 +1,45 @@
-# Financial RAG MCP Server
+# AI Financial & Insurance Analysis Platform - MCP Server
 
-A Model Context Protocol (MCP) server for financial question answering using our RAG system with advanced multi-agent orchestration and insurance domain support.
+A Model Context Protocol (MCP) server for the dual-domain Financial & Insurance Analysis Platform, providing comprehensive banking and insurance capabilities through advanced multi-agent orchestration.
 
 ## Overview
 
-This MCP server implements the Model Context Protocol specification and provides comprehensive financial analysis capabilities through:
+This MCP server implements the Model Context Protocol specification and provides comprehensive dual-domain analysis capabilities through:
 
-- **Multi-Agent Orchestration**: Coordinated processing using specialized agents
-- **Insurance Domain Support**: Domain-specific agents for auto, life, health, dental, and general insurance
+- **Banking Domain**: SEC filings analysis, financial metrics extraction, company comparisons, investment risk assessment
+- **Insurance Domain**: Claims processing, policy analysis, fraud detection, coverage validation
+- **Multi-Agent Orchestration**: Coordinated processing using specialized domain agents
+- **Cross-Domain Integration**: Seamless coordination between banking and insurance workflows
 - **Streaming Responses**: Real-time progress updates for long-running operations
 - **Multiple Protocols**: Support for stdio, HTTP, WebSocket, and Server-Sent Events (SSE)
 
 ## Features
 
-### 🤖 Multi-Agent System
-- **QA Agent**: Financial question answering with source verification
-- **Document Processor**: Intelligent document analysis and extraction
-- **Financial Analyzer**: Risk assessment and performance analysis
-- **Insurance Agents**: Domain-specific insurance processing
+### 🏦 Banking & Financial Analysis
+- **SEC Document Analysis**: Comprehensive analysis of 10-K, 10-Q, 8-K filings
+- **Financial Metrics Extraction**: AI-powered extraction of key performance indicators
+- **Company Comparisons**: Multi-company financial performance analysis
+- **Investment Risk Assessment**: Credit analysis and risk evaluation
+- **Database Search**: Advanced financial document search and filtering
 
-### 🏥 Insurance Domain Support
-- **Auto Insurance**: Vehicle collision, comprehensive, liability claims
-- **Life Insurance**: Death benefit, disability, surrender claims
-- **Health Insurance**: Medical treatment, prescription, preventive care
-- **Dental Insurance**: Preventive, basic, major dental procedures
-- **General Insurance**: Property, casualty, professional liability
+### 🏥 Insurance & Claims Processing
+- **Claims Processing**: Automated claim analysis and assessment workflows
+- **Policy Document Search**: Intelligent policy knowledge base queries
+- **Coverage Validation**: Real-time policy coverage verification
+- **Fraud Detection**: ML-powered fraud risk assessment
+- **Document Analysis**: AI analysis of claim-related documents
 
-### 📡 Streaming Capabilities
-- **Real-time Progress**: Live updates during processing
-- **Incremental Results**: Partial results as they become available
-- **Multiple Protocols**: HTTP, WebSocket, and SSE support
+### 🤖 Multi-Agent Orchestration
+- **Domain-Specific Agents**: Specialized agents for banking and insurance workflows
+- **Cross-Domain Coordination**: Seamless integration between banking and insurance processes
+- **Workflow Management**: Intelligent task routing and execution
+- **Real-time Processing**: Live progress updates and streaming responses
+
+### 📡 Protocol Support
+- **Multiple Interfaces**: HTTP, WebSocket, SSE, and stdio protocols
+- **Claude Integration**: Native compatibility with Claude Desktop
+- **VS Code Extensions**: Direct integration with development environments
+- **Custom Clients**: Full MCP specification compliance for any client
 
 ## Installation
 
@@ -43,7 +53,7 @@ This MCP server implements the Model Context Protocol specification and provides
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd agenticrag
+cd ai-claims-analysis
 
 # Install dependencies
 pip install -r mcp_server/requirements.txt
@@ -95,55 +105,149 @@ python streaming_mcp_server.py --mode http --host 127.0.0.1 --port 8000
 
 ### Available Tools
 
-#### Financial Analysis
+#### Banking & Financial Analysis Tools
+
+**analyze_financial_documents** - Comprehensive SEC filing and financial statement analysis
 ```json
 {
-  "name": "answer_financial_question",
+  "name": "analyze_financial_documents",
   "arguments": {
-    "question": "What are the key risk factors for Microsoft?",
-    "verification_level": "thorough",
-    "use_multi_agent": true
+    "document_ids": ["doc_123", "doc_456"],
+    "analysis_type": "comprehensive"
   }
 }
 ```
 
-#### Document Search
+**search_financial_database** - Financial document search and investment research
 ```json
 {
-  "name": "search_financial_documents",
+  "name": "search_financial_database",
   "arguments": {
-    "query": "quarterly earnings",
-    "top_k": 10,
-    "filters": {"document_type": ["10-K", "10-Q"]}
+    "query": "quarterly earnings technology sector",
+    "filters": {"sector": "technology", "period": "Q3"},
+    "limit": 10
   }
 }
 ```
 
-#### Insurance Claim Processing
+**extract_financial_metrics** - AI-powered extraction of key financial indicators
+```json
+{
+  "name": "extract_financial_metrics",
+  "arguments": {
+    "document_id": "10k_aapl_2024",
+    "metrics_type": "comprehensive"
+  }
+}
+```
+
+**compare_companies** - Multi-company financial comparison analysis
+```json
+{
+  "name": "compare_companies",
+  "arguments": {
+    "company_a": "AAPL",
+    "company_b": "MSFT",
+    "metrics": ["revenue", "profit_margin", "debt_ratio"]
+  }
+}
+```
+
+**assess_investment_risk** - Financial risk analysis and creditworthiness evaluation
+```json
+{
+  "name": "assess_investment_risk",
+  "arguments": {
+    "investment_data": {"symbol": "AAPL", "amount": 10000},
+    "risk_factors": ["market_volatility", "sector_risk"]
+  }
+}
+```
+
+#### Insurance & Claims Tools
+
+**process_insurance_claim** - Comprehensive claims analysis and assessment
 ```json
 {
   "name": "process_insurance_claim",
   "arguments": {
-    "domain": "auto",
-    "claim_type": "collision",
     "claim_data": {
-      "vehicle_info": {...},
-      "damage_details": {...},
-      "witness_statements": [...]
+      "claim_type": "auto_collision",
+      "policy_number": "POL123456",
+      "damage_amount": 5000
     },
-    "parallel_execution": true
+    "policy_id": "POL123456"
   }
 }
 ```
 
-#### Insurance Policy Analysis
+**search_policy_documents** - Policy knowledge base search and coverage analysis
 ```json
 {
-  "name": "analyze_insurance_policy",
+  "name": "search_policy_documents",
   "arguments": {
-    "domain": "life",
-    "policy_data": {
-      "coverage_type": "term",
+    "query": "coverage limits comprehensive insurance",
+    "policy_type": "auto",
+    "limit": 5
+  }
+}
+```
+
+**analyze_claim_documents** - AI-powered analysis of submitted claim materials
+```json
+{
+  "name": "analyze_claim_documents",
+  "arguments": {
+    "claim_id": "CLM789",
+    "document_ids": ["doc_1", "doc_2", "doc_3"]
+  }
+}
+```
+
+**validate_coverage** - Policy coverage validation against claims
+```json
+{
+  "name": "validate_coverage",
+  "arguments": {
+    "claim_data": {"damage_type": "collision", "amount": 3000},
+    "policy_id": "POL123456"
+  }
+}
+```
+
+**assess_fraud_risk** - Fraud detection and risk assessment for claims
+```json
+{
+  "name": "assess_fraud_risk",
+  "arguments": {
+    "claim_data": {"claim_amount": 15000, "incident_type": "theft"},
+    "policy_history": {"claims_count": 2, "years_active": 5}
+  }
+}
+```
+
+#### Cross-Domain Tools
+
+**coordinate_multi_domain_agents** - Multi-agent coordination across domains
+```json
+{
+  "name": "coordinate_multi_domain_agents",
+  "arguments": {
+    "task_description": "Analyze financial exposure from insurance claims",
+    "domains": ["banking", "insurance"]
+  }
+}
+```
+
+**get_system_statistics** - Processing metrics and system performance
+```json
+{
+  "name": "get_system_statistics",
+  "arguments": {
+    "domains": ["banking", "insurance"]
+  }
+}
+```
       "coverage_amount": 500000,
       "beneficiary_info": {...}
     },
