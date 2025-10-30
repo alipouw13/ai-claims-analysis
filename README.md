@@ -20,7 +20,7 @@ This repository implements a dual-domain AI platform serving both banking and in
 2. **Policy Document Management**: Comprehensive policy document storage, indexing, and retrieval with semantic search
 3. **Multi-Agent Claims Evaluation**: Specialized insurance agents for different claim types (auto, life, health, dental) working collaboratively
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
