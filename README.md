@@ -108,7 +108,7 @@ This repository implements a dual-domain AI platform serving both banking and in
 - **Azure-Native**: Full integration with Azure AI services and enterprise security
 - **Flexible Protocols**: Multiple client interfaces (MCP, REST API, WebSocket, SSE)
 
-## ⚠️ Development Status & Disclaimers
+## Development Status & Disclaimers
 
 ### Work-in-Progress Notice
 This platform is currently in **active development** and serves as a **proof-of-concept demonstration**. Key limitations include:
@@ -139,6 +139,9 @@ Before considering production use, this system would need:
 ## Key Features
 
 ### Banking & Financial Analysis
+
+![Banking Admin Landing Page](sample-docs/images/banking-admin-landing.png)
+
 - **SEC Document Processing**: Automated analysis of 10-K, 10-Q, 8-K filings and earnings transcripts
 - **Financial Metrics Extraction**: AI-powered extraction of key financial indicators, ratios, and performance data
 - **Investment Research**: Comprehensive analysis tools for equity research and investment decision support
@@ -148,7 +151,6 @@ Before considering production use, this system would need:
 ### Insurance Claims Processing
 
 ![Claims Admin Landing Page](sample-docs/images/claims-admin-landing.png)
-*Claims Administration Interface - Showcasing the intuitive dashboard for managing insurance claims processing workflows*
 
 - **Multi-Format Support**: PDF, images, and structured claim forms with Azure Document Intelligence
 - **Automated Classification**: AI-powered categorization of claims by type, severity, and coverage area
