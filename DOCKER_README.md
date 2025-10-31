@@ -1,6 +1,6 @@
 # Docker Deployment Guide
 
-This guide explains how to build and deploy the Agentic RAG application using Docker.
+This guide explains how to build and deploy the AI Financial & Insurance Analysis Platform using Docker.
 
 ## Prerequisites
 
@@ -51,13 +51,24 @@ docker-compose up -d
 
 This will:
 - Build and start the backend API server on port 8000
-- Build and start the frontend web server on port 80
+- Build and start the frontend web server on port 5173
 - Set up networking between services
 
 Access the application:
-- Frontend: http://localhost
+- Frontend: http://localhost:5173
 - Backend API: http://localhost:8000
 - API Documentation: http://localhost:8000/docs
+
+**Optional: Start with MCP Server**
+
+To include the Model Context Protocol server for Claude/MCP client integration:
+
+```bash
+docker-compose --profile mcp up -d
+```
+
+Additional access:
+- MCP Server: http://localhost:8001
 
 ### 3. Production Deployment
 
@@ -86,7 +97,9 @@ docker-compose -f docker-compose.prod.yml --profile proxy up -d
 **Port**: 8000
 **Features**:
 - FastAPI web framework
+- Dual-domain banking and insurance analysis
 - Azure AI services integration
+- Multi-agent orchestration
 - Health checks
 - Logging and monitoring
 - Non-root user execution
@@ -96,14 +109,29 @@ docker-compose -f docker-compose.prod.yml --profile proxy up -d
 ### Frontend Service
 
 **Image**: Custom Nginx-served React application  
-**Port**: 80
+**Port**: 5173 (development) / 80 (production)
 **Features**:
-- React/TypeScript application
-- Nginx with compression and security headers
+- React/TypeScript application with Vite
+- Dual-domain UI for banking and insurance workflows
+- Nginx with compression and security headers (production)
 - API proxy to backend
 - Client-side routing support
 
-**Health Check**: `wget http://localhost/`
+**Health Check**: `wget http://localhost:5173/` (dev) / `wget http://localhost/` (prod)
+
+### MCP Server Service (Optional)
+
+**Image**: Custom Python 3.11.9 MCP server
+**Port**: 8001
+**Features**:
+- Model Context Protocol implementation
+- 12 specialized tools (Banking + Insurance + Cross-domain)
+- Claude Desktop integration
+- VS Code extension support
+- HTTP, WebSocket, and SSE protocols
+- Non-root user execution
+
+**Health Check**: `curl http://localhost:8001/health`
 
 ## Management Commands
 
@@ -115,11 +143,16 @@ docker-compose logs -f
 # Specific service
 docker-compose logs -f backend
 docker-compose logs -f frontend
+docker-compose logs -f mcp-server
 ```
 
 ### Stop services
 ```bash
+# Standard services
 docker-compose down
+
+# Including MCP server
+docker-compose --profile mcp down
 ```
 
 ### Rebuild after code changes
@@ -127,9 +160,10 @@ docker-compose down
 # Rebuild specific service
 docker-compose build backend
 docker-compose build frontend
+docker-compose build mcp-server
 
-# Rebuild and restart
-docker-compose up -d --build
+# Rebuild and restart (with MCP)
+docker-compose --profile mcp up -d --build
 ```
 
 ### Scale services
@@ -246,12 +280,19 @@ docker-compose logs -f --tail=100
 
 ## Azure Integration
 
-The application integrates with several Azure services:
+The AI Financial & Insurance Analysis Platform integrates with several Azure services:
 
-- **Azure OpenAI**: For language models and embeddings
-- **Azure AI Search**: For vector and hybrid search
-- **Azure Storage**: For document storage and caching  
-- **Azure AI Foundry**: For model evaluation and monitoring
-- **Azure Application Insights**: For telemetry and logging
+- **Azure OpenAI**: For language models and embeddings (GPT-4o, text-embedding-3-small)
+- **Azure AI Search**: For vector and hybrid search across financial and insurance documents
+- **Azure Storage**: For document storage and caching of SEC filings, policies, and claims
+- **Azure AI Foundry**: For model evaluation and monitoring of banking/insurance workflows
+- **Azure Application Insights**: For telemetry and logging across dual-domain operations
+- **Azure Document Intelligence**: For processing PDF and image-based financial and insurance documents
+
+### Specialized Indexes
+The platform maintains separate search indexes for optimal performance:
+- **financial-documents**: SEC filings, earnings reports, financial statements
+- **policy-documents**: Insurance policies, coverage details, terms and conditions  
+- **claims-documents**: Claims forms, supporting documentation, assessment reports
 
 Ensure all these services are properly configured and accessible from your Docker deployment environment.

@@ -1,84 +1,83 @@
 {
   "deployment": {
-    "name": "rag-financial-poc",
-    "description": "RAG Financial POC - Adaptive Knowledge Base Management",
-    "version": "1.0.0",
-    "environment": "production"
+    "name": "ai-financial-insurance-platform",
+    "description": "AI Financial & Insurance Analysis Platform - Dual-Domain Banking and Insurance Processing",
+    "version": "2.0.0",
+    "environment": "production",
+    "domains": ["banking", "insurance"]
   },
   "azure_services": {
     "resource_group": {
-      "name": "rg-rag-financial-poc",
+      "name": "rg-ai-financial-insurance",
       "location": "East US 2",
       "tags": {
-        "project": "rag-financial-poc",
+        "project": "ai-financial-insurance-platform",
         "environment": "production",
-        "cost-center": "ai-research"
+        "cost-center": "ai-research",
+        "domains": "banking-insurance"
       }
     },
     "ai_foundry": {
-      "project_name": "rag-financial-project",
-      "workspace_name": "rag-financial-workspace",
+      "project_name": "ai-financial-insurance-project",
+      "workspace_name": "ai-financial-insurance-workspace", 
       "location": "East US 2",
       "sku": "Standard",
       "features": [
         "model-deployment",
         "evaluation-framework",
         "observability",
-        "prompt-flow"
+        "prompt-flow",
+        "multi-agent-orchestration",
+        "banking-workflows",
+        "insurance-workflows"
       ]
     },
     "openai": {
-      "account_name": "openai-rag-financial",
+      "account_name": "openai-ai-financial-insurance",
       "location": "East US 2",
       "sku": "S0",
       "deployments": [
         {
-          "name": "gpt-4",
-          "model": "gpt-4",
-          "version": "0613",
-          "capacity": 10
+          "name": "gpt-4o",
+          "model": "gpt-4o",
+          "version": "2024-08-06",
+          "capacity": 20,
+          "purpose": "primary-chat-model"
         },
         {
-          "name": "gpt-4-turbo",
-          "model": "gpt-4-turbo",
-          "version": "2024-04-09",
-          "capacity": 10
-        },
-        {
-          "name": "gpt-35-turbo",
-          "model": "gpt-35-turbo",
-          "version": "0613",
-          "capacity": 20
-        },
-        {
-          "name": "text-embedding-ada-002",
-          "model": "text-embedding-ada-002",
-          "version": "2",
-          "capacity": 30
+          "name": "gpt-4o-mini",
+          "model": "gpt-4o-mini",
+          "version": "2024-07-18",
+          "capacity": 30,
+          "purpose": "lightweight-tasks"
         },
         {
           "name": "text-embedding-3-small",
           "model": "text-embedding-3-small",
           "version": "1",
-          "capacity": 30
+          "capacity": 50,
+          "purpose": "primary-embeddings"
         },
         {
           "name": "text-embedding-3-large",
           "model": "text-embedding-3-large",
           "version": "1",
-          "capacity": 20
+          "capacity": 30,
+          "purpose": "high-precision-embeddings"
         }
       ]
     },
     "search": {
-      "service_name": "search-rag-financial",
+      "service_name": "search-ai-financial-insurance",
       "location": "East US 2",
       "sku": "Standard",
-      "replica_count": 1,
+      "replica_count": 2,
       "partition_count": 1,
+      "semantic_search": true,
       "indexes": [
         {
-          "name": "financial-documents-index",
+          "name": "financial-documents",
+          "description": "SEC filings, earnings reports, financial statements",
           "fields": [
             {
               "name": "id",
@@ -100,10 +99,16 @@
               "vectorSearchProfile": "default-vector-profile"
             },
             {
-              "name": "document_title",
+              "name": "title",
               "type": "Edm.String",
               "searchable": true,
               "filterable": true
+            },
+            {
+              "name": "source",
+              "type": "Edm.String",
+              "filterable": true,
+              "facetable": true
             },
             {
               "name": "document_type",
@@ -112,29 +117,24 @@
               "facetable": true
             },
             {
-              "name": "section_title",
+              "name": "company_symbol",
               "type": "Edm.String",
-              "searchable": true,
-              "filterable": true
+              "filterable": true,
+              "facetable": true
             },
             {
-              "name": "page_number",
-              "type": "Edm.Int32",
+              "name": "filing_date",
+              "type": "Edm.DateTimeOffset",
               "filterable": true,
               "sortable": true
             },
             {
-              "name": "chunk_id",
+              "name": "parent_id",
               "type": "Edm.String",
               "filterable": true
             },
             {
-              "name": "metadata",
-              "type": "Edm.String",
-              "searchable": false
-            },
-            {
-              "name": "created_date",
+              "name": "processed_at",
               "type": "Edm.DateTimeOffset",
               "filterable": true,
               "sortable": true
@@ -142,91 +142,281 @@
           ],
           "semantic_configuration": {
             "name": "financial-semantic-config",
-            "title_field": "document_title",
-            "content_fields": ["content", "section_title"],
-            "keyword_fields": ["document_type"]
+            "title_field": "title",
+            "content_fields": ["content"],
+            "keyword_fields": ["document_type", "company_symbol"]
+          }
+        },
+        {
+          "name": "policy-documents",
+          "description": "Insurance policy documents, coverage details, terms",
+          "fields": [
+            {
+              "name": "id",
+              "type": "Edm.String",
+              "key": true,
+              "searchable": false
+            },
+            {
+              "name": "content",
+              "type": "Edm.String",
+              "searchable": true,
+              "analyzer": "en.microsoft"
+            },
+            {
+              "name": "content_vector",
+              "type": "Collection(Edm.Single)",
+              "searchable": true,
+              "dimensions": 1536,
+              "vectorSearchProfile": "default-vector-profile"
+            },
+            {
+              "name": "title",
+              "type": "Edm.String",
+              "searchable": true,
+              "filterable": true
+            },
+            {
+              "name": "source",
+              "type": "Edm.String",
+              "filterable": true,
+              "facetable": true
+            },
+            {
+              "name": "policy_type",
+              "type": "Edm.String",
+              "filterable": true,
+              "facetable": true
+            },
+            {
+              "name": "coverage_type",
+              "type": "Edm.String",
+              "filterable": true,
+              "facetable": true
+            },
+            {
+              "name": "parent_id",
+              "type": "Edm.String",
+              "filterable": true
+            },
+            {
+              "name": "processed_at",
+              "type": "Edm.DateTimeOffset",
+              "filterable": true,
+              "sortable": true
+            }
+          ],
+          "semantic_configuration": {
+            "name": "policy-semantic-config",
+            "title_field": "title",
+            "content_fields": ["content"],
+            "keyword_fields": ["policy_type", "coverage_type"]
+          }
+        },
+        {
+          "name": "claims-documents", 
+          "description": "Insurance claims forms, supporting documentation",
+          "fields": [
+            {
+              "name": "id",
+              "type": "Edm.String",
+              "key": true,
+              "searchable": false
+            },
+            {
+              "name": "content",
+              "type": "Edm.String",
+              "searchable": true,
+              "analyzer": "en.microsoft"
+            },
+            {
+              "name": "content_vector",
+              "type": "Collection(Edm.Single)",
+              "searchable": true,
+              "dimensions": 1536,
+              "vectorSearchProfile": "default-vector-profile"
+            },
+            {
+              "name": "title",
+              "type": "Edm.String",
+              "searchable": true,
+              "filterable": true
+            },
+            {
+              "name": "source",
+              "type": "Edm.String",
+              "filterable": true,
+              "facetable": true
+            },
+            {
+              "name": "claim_type",
+              "type": "Edm.String",
+              "filterable": true,
+              "facetable": true
+            },
+            {
+              "name": "claim_status",
+              "type": "Edm.String",
+              "filterable": true,
+              "facetable": true
+            },
+            {
+              "name": "parent_id",
+              "type": "Edm.String",
+              "filterable": true
+            },
+            {
+              "name": "processed_at",
+              "type": "Edm.DateTimeOffset",
+              "filterable": true,
+              "sortable": true
+            }
+          ],
+          "semantic_configuration": {
+            "name": "claims-semantic-config",
+            "title_field": "title",
+            "content_fields": ["content"],
+            "keyword_fields": ["claim_type", "claim_status"]
           }
         }
       ]
     },
     "cosmos_db": {
-      "account_name": "cosmos-rag-financial",
+      "account_name": "cosmos-ai-financial-insurance",
       "location": "East US 2",
       "consistency_level": "Session",
       "databases": [
         {
-          "name": "rag-financial-db",
+          "name": "ai-financial-insurance-db",
           "containers": [
             {
               "name": "chat-sessions",
               "partition_key": "/session_id",
-              "throughput": 400
+              "throughput": 400,
+              "description": "Chat session management for banking and insurance workflows"
             },
             {
               "name": "evaluation-results",
-              "partition_key": "/session_id",
-              "throughput": 400
+              "partition_key": "/session_id", 
+              "throughput": 400,
+              "description": "AI model evaluation results and performance metrics"
             },
             {
               "name": "document-metadata",
               "partition_key": "/document_id",
-              "throughput": 400
+              "throughput": 400,
+              "description": "Metadata for financial and insurance documents"
             },
             {
               "name": "user-feedback",
               "partition_key": "/user_id",
-              "throughput": 400
+              "throughput": 400,
+              "description": "User feedback and interaction tracking"
+            },
+            {
+              "name": "agent-workflows",
+              "partition_key": "/workflow_id",
+              "throughput": 400,
+              "description": "Multi-agent workflow orchestration and state management"
+            },
+            {
+              "name": "claims-processing",
+              "partition_key": "/claim_id",
+              "throughput": 600,
+              "description": "Insurance claims processing state and results"
+            },
+            {
+              "name": "financial-analysis",
+              "partition_key": "/analysis_id",
+              "throughput": 600,
+              "description": "Financial analysis results and SEC filing processing"
             }
           ]
         }
       ]
     },
     "document_intelligence": {
-      "account_name": "doc-intel-rag-financial",
+      "account_name": "doc-intel-ai-financial-insurance",
       "location": "East US 2",
       "sku": "S0",
       "features": [
         "layout-analysis",
-        "table-extraction",
+        "table-extraction", 
         "key-value-extraction",
-        "financial-document-analysis"
+        "financial-document-analysis",
+        "insurance-forms-processing",
+        "claims-document-extraction",
+        "policy-document-parsing"
+      ]
+    },
+    "storage": {
+      "account_name": "staifinancialinsurance",
+      "location": "East US 2",
+      "sku": "Standard_LRS",
+      "containers": [
+        {
+          "name": "financial-documents",
+          "description": "SEC filings, earnings reports, financial statements"
+        },
+        {
+          "name": "policy-documents", 
+          "description": "Insurance policy documents and coverage details"
+        },
+        {
+          "name": "claims-documents",
+          "description": "Insurance claims forms and supporting documentation"
+        },
+        {
+          "name": "processed-documents",
+          "description": "Documents that have been processed and indexed"
+        },
+        {
+          "name": "evaluation-data",
+          "description": "Test datasets and evaluation results"
+        }
       ]
     },
     "key_vault": {
-      "name": "kv-rag-financial",
+      "name": "kv-ai-financial-insurance",
       "location": "East US 2",
       "sku": "Standard",
       "secrets": [
         "azure-openai-api-key",
         "azure-search-api-key",
-        "azure-cosmos-key",
+        "azure-cosmos-primary-key",
+        "azure-cosmos-secondary-key",
         "azure-document-intelligence-api-key",
-        "jwt-secret-key"
+        "azure-storage-account-key",
+        "jwt-secret-key",
+        "mcp-server-auth-key"
       ]
     },
     "application_insights": {
-      "name": "ai-rag-financial",
+      "name": "ai-ai-financial-insurance",
       "location": "East US 2",
       "application_type": "web",
       "features": [
         "distributed-tracing",
         "performance-monitoring",
         "custom-metrics",
-        "log-analytics"
+        "log-analytics",
+        "multi-agent-tracing",
+        "banking-workflow-monitoring",
+        "insurance-workflow-monitoring"
       ]
     },
     "container_apps": {
-      "environment_name": "cae-rag-financial",
+      "environment_name": "cae-ai-financial-insurance",
       "location": "East US 2",
       "apps": [
         {
-          "name": "rag-financial-backend",
-          "image": "rag-financial-backend:latest",
+          "name": "ai-financial-insurance-backend",
+          "image": "ai-financial-insurance-backend:latest",
           "port": 8000,
-          "cpu": 1.0,
-          "memory": "2Gi",
-          "min_replicas": 1,
-          "max_replicas": 10,
+          "cpu": 2.0,
+          "memory": "4Gi",
+          "min_replicas": 2,
+          "max_replicas": 20,
           "environment_variables": [
             {
               "name": "AZURE_OPENAI_ENDPOINT",
@@ -235,24 +425,51 @@
             {
               "name": "AZURE_OPENAI_API_KEY",
               "secretRef": "azure-openai-api-key"
+            },
+            {
+              "name": "AZURE_SEARCH_ENDPOINT",
+              "secretRef": "azure-search-endpoint"
+            },
+            {
+              "name": "AZURE_SEARCH_API_KEY",
+              "secretRef": "azure-search-api-key"
             }
           ]
         },
         {
-          "name": "rag-financial-frontend",
-          "image": "rag-financial-frontend:latest",
+          "name": "ai-financial-insurance-frontend",
+          "image": "ai-financial-insurance-frontend:latest",
           "port": 80,
-          "cpu": 0.5,
-          "memory": "1Gi",
+          "cpu": 1.0,
+          "memory": "2Gi",
+          "min_replicas": 2,
+          "max_replicas": 10
+        },
+        {
+          "name": "ai-financial-insurance-mcp",
+          "image": "ai-financial-insurance-mcp:latest",
+          "port": 8001,
+          "cpu": 1.0,
+          "memory": "2Gi",
           "min_replicas": 1,
-          "max_replicas": 5
+          "max_replicas": 5,
+          "environment_variables": [
+            {
+              "name": "BACKEND_URL",
+              "value": "http://ai-financial-insurance-backend:8000"
+            },
+            {
+              "name": "MCP_AUTH_KEY",
+              "secretRef": "mcp-server-auth-key"
+            }
+          ]
         }
       ]
     }
   },
   "networking": {
     "virtual_network": {
-      "name": "vnet-rag-financial",
+      "name": "vnet-ai-financial-insurance",
       "address_space": "10.0.0.0/16",
       "subnets": [
         {
@@ -262,60 +479,205 @@
         {
           "name": "subnet-private-endpoints",
           "address_prefix": "10.0.2.0/24"
+        },
+        {
+          "name": "subnet-ai-services",
+          "address_prefix": "10.0.3.0/24"
         }
       ]
     },
     "private_endpoints": [
       "cosmos-db",
-      "key-vault",
-      "search-service"
+      "key-vault", 
+      "search-service",
+      "storage-account",
+      "openai-service"
     ]
   },
   "security": {
     "managed_identity": {
-      "name": "mi-rag-financial",
+      "name": "mi-ai-financial-insurance",
       "type": "SystemAssigned"
+    },
+    "service_principal": {
+      "name": "sp-ai-financial-insurance-app",
+      "description": "Service principal for application authentication"
     },
     "rbac_assignments": [
       {
-        "principal": "mi-rag-financial",
+        "principal": "mi-ai-financial-insurance",
         "role": "Cognitive Services OpenAI User",
-        "scope": "openai-rag-financial"
+        "scope": "openai-ai-financial-insurance",
+        "description": "Access to OpenAI models for chat and embeddings"
       },
       {
-        "principal": "mi-rag-financial",
+        "principal": "mi-ai-financial-insurance", 
         "role": "Search Index Data Contributor",
-        "scope": "search-rag-financial"
+        "scope": "search-ai-financial-insurance",
+        "description": "Read/write access to search indexes"
       },
       {
-        "principal": "mi-rag-financial",
-        "role": "Cosmos DB Built-in Data Contributor",
-        "scope": "cosmos-rag-financial"
+        "principal": "mi-ai-financial-insurance",
+        "role": "Search Service Contributor", 
+        "scope": "search-ai-financial-insurance",
+        "description": "Manage search service configuration"
+      },
+      {
+        "principal": "mi-ai-financial-insurance",
+        "role": "DocumentDB Account Contributor",
+        "scope": "cosmos-ai-financial-insurance", 
+        "description": "Full access to Cosmos DB account and databases"
+      },
+      {
+        "principal": "mi-ai-financial-insurance",
+        "role": "Storage Blob Data Contributor",
+        "scope": "staifinancialinsurance",
+        "description": "Read/write access to blob storage containers"
+      },
+      {
+        "principal": "mi-ai-financial-insurance",
+        "role": "Cognitive Services User",
+        "scope": "doc-intel-ai-financial-insurance",
+        "description": "Access to Document Intelligence services"
+      },
+      {
+        "principal": "mi-ai-financial-insurance",
+        "role": "Key Vault Secrets User",
+        "scope": "kv-ai-financial-insurance",
+        "description": "Read access to Key Vault secrets"
+      },
+      {
+        "principal": "mi-ai-financial-insurance",
+        "role": "Application Insights Component Contributor",
+        "scope": "ai-ai-financial-insurance",
+        "description": "Write telemetry and custom metrics"
+      },
+      {
+        "principal": "sp-ai-financial-insurance-app",
+        "role": "Cognitive Services OpenAI User", 
+        "scope": "openai-ai-financial-insurance",
+        "description": "Application access to OpenAI models"
+      },
+      {
+        "principal": "sp-ai-financial-insurance-app",
+        "role": "Search Index Data Reader",
+        "scope": "search-ai-financial-insurance", 
+        "description": "Application read access to search indexes"
+      }
+    ],
+    "cosmos_db_roles": [
+      {
+        "principal": "mi-ai-financial-insurance",
+        "role": "DocumentDB Account Contributor",
+        "scope": "cosmos-ai-financial-insurance",
+        "permissions": ["read", "write", "create", "delete"]
+      },
+      {
+        "principal": "sp-ai-financial-insurance-app",
+        "role": "Cosmos DB Built-in Data Contributor", 
+        "scope": "cosmos-ai-financial-insurance/dbs/ai-financial-insurance-db",
+        "permissions": ["read", "write", "create"]
       }
     ]
   },
   "monitoring": {
     "log_analytics_workspace": {
-      "name": "law-rag-financial",
+      "name": "law-ai-financial-insurance",
       "location": "East US 2",
-      "retention_days": 30
+      "retention_days": 90,
+      "features": [
+        "banking-workflow-monitoring",
+        "insurance-claims-tracking", 
+        "multi-agent-observability",
+        "security-audit-logging"
+      ]
     },
     "alerts": [
       {
         "name": "High Error Rate",
         "condition": "error_rate > 5%",
-        "action": "email-notification"
+        "action": "email-notification",
+        "severity": "High"
       },
       {
         "name": "High Response Time",
         "condition": "avg_response_time > 5s",
-        "action": "email-notification"
+        "action": "email-notification",
+        "severity": "Medium"
       },
       {
-        "name": "Token Usage Threshold",
-        "condition": "daily_tokens > 100000",
-        "action": "email-notification"
+        "name": "Token Usage Threshold - Banking",
+        "condition": "daily_banking_tokens > 150000",
+        "action": "email-notification",
+        "severity": "Medium"
+      },
+      {
+        "name": "Token Usage Threshold - Insurance",
+        "condition": "daily_insurance_tokens > 100000", 
+        "action": "email-notification",
+        "severity": "Medium"
+      },
+      {
+        "name": "Claims Processing Backlog",
+        "condition": "pending_claims_count > 100",
+        "action": "email-notification",
+        "severity": "High"
+      },
+      {
+        "name": "Financial Analysis Queue",
+        "condition": "pending_financial_analysis > 50",
+        "action": "email-notification", 
+        "severity": "Medium"
+      },
+      {
+        "name": "Multi-Agent Workflow Failures",
+        "condition": "failed_workflows_rate > 10%",
+        "action": "email-notification",
+        "severity": "High"
+      },
+      {
+        "name": "Storage Usage - Financial Documents",
+        "condition": "financial_storage_usage > 80%",
+        "action": "email-notification",
+        "severity": "Medium"
+      },
+      {
+        "name": "Search Index Performance",
+        "condition": "search_latency_p95 > 2s",
+        "action": "email-notification",
+        "severity": "Medium"
+      },
+      {
+        "name": "MCP Server Health",
+        "condition": "mcp_server_availability < 99%",
+        "action": "email-notification",
+        "severity": "High"
       }
     ]
+  },
+  "ai_foundry_integration": {
+    "evaluations": {
+      "banking_workflows": [
+        "financial_accuracy_evaluation",
+        "sec_filing_analysis_quality",
+        "investment_risk_assessment_precision"
+      ],
+      "insurance_workflows": [
+        "claims_processing_accuracy",
+        "policy_coverage_validation",
+        "fraud_detection_performance"
+      ],
+      "cross_domain": [
+        "multi_agent_coordination_effectiveness",
+        "response_quality_evaluation",
+        "user_satisfaction_metrics"
+      ]
+    },
+    "model_monitoring": {
+      "drift_detection": true,
+      "performance_tracking": true,
+      "bias_monitoring": true,
+      "cost_optimization": true
+    }
   }
 }

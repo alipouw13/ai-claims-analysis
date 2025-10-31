@@ -310,12 +310,144 @@ The system supports three levels of analysis for both banking and insurance doma
 | **Multi-Agent Collaboration** | ❌ | ❌ | ✅ |
 | **Use Case** | Initial triage | Standard claims | Complex/disputed claims |
 
-### Azure Services Setup
-1. **Azure AI Foundry**: Create projects with both banking and insurance domain agents and specialized tools
-2. **Azure OpenAI**: Deploy GPT-4 models optimized for financial analysis, insurance claims, and policy interpretation
-3. **Azure AI Search**: Configure multi-index architecture (financial-documents, policy-documents, claims-documents) with domain-specific vector search
-4. **Azure Document Intelligence**: Enable for processing SEC filings, financial reports, claim forms, and policy documents
-5. **Azure Application Insights**: Configure for comprehensive monitoring across both banking and insurance workflows
+### Azure Services Setup & Security Requirements
+
+The platform requires multiple Azure services with specific RBAC configurations. Use the provided `azure-deployment-config.json` for automated deployment via Azure CLI, Bicep, or Terraform.
+
+#### Service Principal Requirements
+
+**Primary Service Principal: `sp-ai-financial-insurance-app`**
+```bash
+# Create service principal
+az ad sp create-for-rbac --name "sp-ai-financial-insurance-app" \
+  --role "Contributor" \
+  --scopes "/subscriptions/{subscription-id}/resourceGroups/rg-ai-financial-insurance"
+```
+
+#### Required Azure Services & Roles
+
+##### 1. Azure OpenAI Service
+**Service**: `openai-ai-financial-insurance`
+- **Models Required**: GPT-5, GPT-4.1, GPT-4.1-mini, text-embedding-3-small, text-embedding-3-large
+- **SPN Roles**:
+  - `Cognitive Services OpenAI User` - Access to chat completions and embeddings
+  - `Cognitive Services OpenAI Contributor` - Model deployment management
+- **Managed Identity Roles**:
+  - `Cognitive Services OpenAI User` - Runtime access for applications
+
+##### 2. Azure AI Search Service  
+**Service**: `search-ai-financial-insurance`
+- **Indexes**: financial-documents, policy-documents, claims-documents
+- **SPN Roles**:
+  - `Search Service Contributor` - Create/manage indexes and skillsets
+  - `Search Index Data Contributor` - Read/write search index data
+- **Managed Identity Roles**:
+  - `Search Index Data Contributor` - Application access to indexes
+  - `Search Index Data Reader` - Read-only access for queries
+- **AI Foundry/OpenAI Integration**:
+  - Grant OpenAI service `Search Index Data Reader` on search service
+  - Grant AI Foundry workspace `Search Service Contributor` for index management
+
+##### 3. Cosmos DB Account
+**Service**: `cosmos-ai-financial-insurance`
+- **Database**: `ai-financial-insurance-db`
+- **Containers**: chat-sessions, evaluation-results, token-usage
+- **SPN Roles**:
+  - `DocumentDB Account Contributor` - Account and database management
+  - `Cosmos DB Account Reader` - Read account configuration
+- **Managed Identity Roles**:
+  - `DocumentDB Account Contributor` - Full access for applications
+- **Built-in Cosmos DB Roles**:
+  ```bash
+  # Custom data plane roles (using Cosmos RBAC)
+  az cosmosdb sql role assignment create \
+    --account-name cosmos-ai-financial-insurance \
+    --resource-group rg-ai-financial-insurance \
+    --scope "/" \
+    --principal-id {managed-identity-principal-id} \
+    --role-definition-id "00000000-0000-0000-0000-000000000002"  # Cosmos DB Built-in Data Contributor
+  ```
+
+##### 4. Azure Storage Account
+**Service**: `staifinancialinsurance`
+- **Containers**: financial-documents, policy-documents, claims-documents, processed-documents, evaluation-data
+- **SPN Roles**:
+  - `Storage Account Contributor` - Account management
+  - `Storage Blob Data Contributor` - Full blob access
+- **Managed Identity Roles**:
+  - `Storage Blob Data Contributor` - Application access to containers
+  - `Storage Queue Data Contributor` - For async processing queues
+
+##### 5. Azure Document Intelligence
+**Service**: `doc-intel-ai-financial-insurance`
+- **SPN Roles**:
+  - `Cognitive Services Contributor` - Service configuration
+  - `Cognitive Services User` - Service usage
+- **Managed Identity Roles**:
+  - `Cognitive Services User` - Application access for document processing
+
+##### 6. Azure Key Vault
+**Service**: `kv-ai-financial-insurance`
+- **SPN Roles**:
+  - `Key Vault Administrator` - Vault management and secret creation
+  - `Key Vault Secrets Officer` - Secret management
+- **Managed Identity Roles**:
+  - `Key Vault Secrets User` - Application access to secrets
+- **Application Registration**:
+  - Grant application access policy: `Get`, `List` permissions for secrets
+
+##### 7. Azure AI Foundry
+**Service**: `ai-financial-insurance-workspace`
+- **SPN Roles**:
+  - `Azure AI Developer` - Model deployment and evaluation
+- **Managed Identity Roles**:
+  - `Azure AI Developer` - Application access to AI Foundry services
+- **Required Integrations**:
+  - **OpenAI Connection**: AI Foundry needs `Cognitive Services OpenAI User` on OpenAI service
+  - **Search Connection**: AI Foundry needs `Search Index Data Reader` on Search service
+  - **Storage Connection**: AI Foundry needs `Storage Blob Data Reader` on Storage account
+
+##### 8. Application Insights
+**Service**: `ai-ai-financial-insurance`
+- **SPN Roles**:
+  - `Application Insights Component Contributor` - Component management
+- **Managed Identity Roles**:
+  - `Monitoring Contributor` - Write telemetry and custom metrics
+
+#### 🔗 Cross-Service Permission Matrix
+
+| Source Service | Target Service | Required Role/Permission | Purpose |
+|----------------|----------------|-------------------------|---------|
+| AI Foundry | Azure OpenAI | `Cognitive Services OpenAI User` | Model access for evaluations |
+| AI Foundry | Azure AI Search | `Search Index Data Reader` | Index access for RAG |
+| AI Foundry | Azure Storage | `Storage Blob Data Reader` | Document access |
+| Azure OpenAI | Azure AI Search | `Search Index Data Reader` | Function calling search integration |
+| Application | All Services | Managed Identity roles above | Runtime application access |
+| Container Apps | Key Vault | `Key Vault Secrets User` | Secret retrieval |
+
+#### 🚀 Automated Deployment Commands
+
+```bash
+# 1. Create resource group
+az group create --name rg-ai-financial-insurance --location "East US 2"
+
+# 2. Deploy using the configuration (requires Bicep template)
+az deployment group create \
+  --resource-group rg-ai-financial-insurance \
+  --template-file azure-main.bicep \
+  --parameters @azure-deployment-config.json
+
+# 3. Configure role assignments post-deployment
+./scripts/configure-rbac.sh
+```
+
+#### 🛡️ Security Best Practices
+- **Use Managed Identities** for all application authentication
+- **Enable Private Endpoints** for all PaaS services
+- **Configure Network Security Groups** to restrict access
+- **Enable Azure AD authentication** for all services
+- **Rotate secrets regularly** in Key Vault
+- **Monitor access patterns** via Application Insights and Log Analytics
 
 ### Environment Configuration
 See detailed configuration in:

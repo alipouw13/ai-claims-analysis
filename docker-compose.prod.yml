@@ -5,7 +5,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: agenticrag-backend-prod
+    container_name: ai-claims-analysis-backend-prod
     environment:
       - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID}
       - AZURE_RESOURCE_GROUP=${AZURE_RESOURCE_GROUP}
@@ -30,7 +30,7 @@ services:
     volumes:
       - backend_logs:/app/logs
     networks:
-      - agenticrag-network
+      - ai-claims-network
     restart: unless-stopped
     deploy:
       resources:
@@ -51,7 +51,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: agenticrag-frontend-prod
+    container_name: ai-claims-analysis-frontend-prod
     ports:
       - "80:80"
       - "443:443"
@@ -59,7 +59,7 @@ services:
       backend:
         condition: service_healthy
     networks:
-      - agenticrag-network
+      - ai-claims-network
     restart: unless-stopped
     deploy:
       resources:
@@ -75,10 +75,39 @@ services:
       timeout: 5s
       retries: 3
 
+  mcp-server:
+    build:
+      context: ./mcp_server
+      dockerfile: Dockerfile
+    container_name: ai-claims-analysis-mcp-prod
+    ports:
+      - "8001:8001"
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - MCP_PORT=8001
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - ai-claims-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    profiles:
+      - mcp
+
   # Optional: Reverse proxy with SSL termination
   traefik:
     image: traefik:v3.0
-    container_name: agenticrag-proxy
+    container_name: ai-claims-analysis-proxy
     command:
       - --api.dashboard=true
       - --api.insecure=true
@@ -96,7 +125,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_letsencrypt:/letsencrypt
     networks:
-      - agenticrag-network
+      - ai-claims-network
     labels:
       - traefik.enable=true
       - traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN_NAME}`)
@@ -113,5 +142,5 @@ volumes:
     driver: local
 
 networks:
-  agenticrag-network:
+  ai-claims-network:
     driver: bridge
