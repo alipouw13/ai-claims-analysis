@@ -26,11 +26,11 @@ This repository implements a dual-domain AI platform serving both banking and in
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                        AI Financial & Insurance Analysis Platform                │
+│                        AI Financial & Insurance Analysis Platform               │
 └─────────────────────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                                 CLIENT LAYER                                    │
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                                 CLIENT LAYER                                   │
 ├─────────────────────┬─────────────────────┬─────────────────────┬──────────────┤
 │    Claude Desktop   │   VS Code Extension │   Web Frontend      │   MCP Clients│
 │    (MCP Client)     │    (MCP Client)     │   (React + Vite)    │   (Custom)   │
@@ -53,24 +53,24 @@ This repository implements a dual-domain AI platform serving both banking and in
 │                              BACKEND API LAYER                                  │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                            FastAPI Backend (Python)                             │
-│  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────────┐ │
-│  │   Banking Services  │  │  Insurance Services │  │   Shared Services       │ │
-│  │  • SEC Document     │  │  • Claims Processing│  │  • Document Processor   │ │
-│  │  • Financial Metrics│  │  • Policy Management│  │  • Knowledge Base Mgr   │ │
-│  │  • Risk Assessment  │  │  • Fraud Detection  │  │  • Azure AI Services    │ │
-│  └─────────────────────┘  └─────────────────────┘  └─────────────────────────┘ │
+│  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────────┐  │
+│  │   Banking Services  │  │  Insurance Services │  │   Shared Services       │  │
+│  │  • SEC Document     │  │  • Claims Processing│  │  • Document Processor   │  │
+│  │  • Financial Metrics│  │  • Policy Management│  │  • Knowledge Base Mgr   │  │
+│  │  • Risk Assessment  │  │  • Fraud Detection  │  │  • Azure AI Services    │  │
+│  └─────────────────────┘  └─────────────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                         │
                                         ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                           MULTI-AGENT ORCHESTRATION                             │
 ├─────────────────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────────┐ │
-│  │   Banking Agents    │  │  Insurance Agents   │  │   Cross-Domain Agents   │ │
-│  │  • Financial Analyst│  │  • Claims Assessor  │  │  • Risk Coordinator     │ │
-│  │  • Credit Analyst   │  │  • Policy Analyst   │  │  • Data Orchestrator    │ │
-│  │  • Compliance Agent │  │  • Fraud Detector   │  │  • Workflow Manager     │ │
-│  └─────────────────────┘  └─────────────────────┘  └─────────────────────────┘ │
+│  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────────┐  │
+│  │   Banking Agents    │  │  Insurance Agents   │  │   Cross-Domain Agents   │  │
+│  │  • Financial Analyst│  │  • Claims Assessor  │  │  • Risk Coordinator     │  │
+│  │  • Credit Analyst   │  │  • Policy Analyst   │  │  • Data Orchestrator    │  │
+│  │  • Compliance Agent │  │  • Fraud Detector   │  │  • Workflow Manager     │  │
+│  └─────────────────────┘  └─────────────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                         │
                                         ▼
@@ -78,9 +78,9 @@ This repository implements a dual-domain AI platform serving both banking and in
 │                              AZURE AI SERVICES                                  │
 ├─────────────────────────┬─────────────────────┬─────────────────────────────────┤
 │    Azure OpenAI         │   Azure AI Search   │   Document Intelligence         │
-│  • GPT-5 for Analysis │  • Vector Store      │  • PDF/Image Processing        │
-│  • Embeddings Models   │  • Semantic Search   │  • Form Recognition             │
-│  • Function Calling    │  • Hybrid Search     │  • Layout Analysis              │
+│  • GPT-5 for Analysis   │  • Vector Store      │  • PDF/Image Processing        │
+│  • Embeddings Models    │  • Semantic Search   │  • Document Recognition        │
+│  • Function Calling     │  • Hybrid Search     │  • Layout Analysis             │
 └─────────────────────────┴─────────────────────┴─────────────────────────────────┘
                                         │
                                         ▼
@@ -96,8 +96,8 @@ This repository implements a dual-domain AI platform serving both banking and in
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                            OBSERVABILITY & MONITORING                           │
 ├─────────────────────────────────────────────────────────────────────────────────┤
-│ • Application Insights  • Performance Tracking  • Token Usage  • Error Logging │
-│ • Azure AI Foundry Evaluations  • Multi-Agent Tracing  • Real-time Metrics     │
+│ • Application Insights  • Performance Tracking  • Token Usage  • Error Logging  │
+│ • Azure AI Foundry Evaluations  • Multi-Agent Tracing  • Real-time Metrics      │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
