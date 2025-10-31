@@ -33,6 +33,10 @@ PyPDF2==3.0.1
 openpyxl==3.1.2
 tiktoken==0.5.2
 
+# Optional Database and Web Framework Dependencies (for instrumentation)
+psycopg2-binary==2.9.9
+django==4.2.16
+
 # Observability and Monitoring
 opentelemetry-api==1.32.0
 opentelemetry-sdk==1.32.0
