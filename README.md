@@ -1,8 +1,8 @@
 # AI Financial & Insurance Analysis Platform
 
-> ⚠️ **IMPORTANT DISCLAIMER**: This repository is a **work-in-progress demonstration** and is **NOT production-ready**. It serves as an example implementation for educational and development purposes. Do not use in production environments without significant additional development, security review, and testing.
+> **IMPORTANT DISCLAIMER**: This repository is a **work-in-progress demonstration** and is **NOT production-ready**. It serves as an example implementation for educational and development purposes. Do not use in production environments without significant additional development, security review, and testing.
 
-> 📋 **ATTRIBUTION**: This project is based on and extends the excellent work from [akshata29/agenticrag](https://github.com/akshata29/agenticrag). We've adapted and enhanced the original architecture to support dual-domain banking and insurance capabilities.
+> **ATTRIBUTION**: This project is based on and extends the excellent work from [akshata29/agenticrag](https://github.com/akshata29/agenticrag). We've adapted and enhanced the original architecture to support dual-domain banking and insurance capabilities.
 
 A comprehensive financial and insurance analysis platform that leverages Azure AI services to serve both banking and insurance sectors. The system combines RAG (Retrieval-Augmented Generation), multi-agent orchestration, and advanced document processing to streamline financial analysis, insurance claims processing, and policy management workflows.
 
@@ -14,6 +14,8 @@ This repository implements a dual-domain AI platform serving both banking and in
 1. **Financial Document Analysis**: Automated processing and analysis of SEC filings, earnings reports, and financial statements
 2. **Investment Research**: AI-powered analysis of 10-K/10-Q reports for investment decision support
 3. **Regulatory Compliance**: Automated monitoring and analysis of regulatory filings and compliance documents
+
+
 
 ### Insurance Domain
 1. **Intelligent Claims Processing**: Automated ingestion and analysis of claim documents with AI-powered assessment
@@ -144,6 +146,10 @@ Before considering production use, this system would need:
 - **Risk Assessment**: Financial risk analysis and creditworthiness evaluation
 
 ### Insurance Claims Processing
+
+![Claims Admin Landing Page](sample-docs/images/claims-admin-landing.png)
+*Claims Administration Interface - Showcasing the intuitive dashboard for managing insurance claims processing workflows*
+
 - **Multi-Format Support**: PDF, images, and structured claim forms with Azure Document Intelligence
 - **Automated Classification**: AI-powered categorization of claims by type, severity, and coverage area
 - **Progress Tracking**: Real-time processing status with detailed progress indicators
