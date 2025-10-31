@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { FileText, Download, Eye, AlertCircle, RefreshCw } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { FileText, Download, Eye, AlertCircle, RefreshCw, X } from 'lucide-react';
 import { apiService } from '@/services/api';
 
 interface ClaimDocument {
@@ -39,6 +40,13 @@ export const ClaimsSummary: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Add these new state variables for document preview/download functionality
+  const [previewDocument, setPreviewDocument] = useState<ClaimDocument | null>(null);
+  const [documentContent, setDocumentContent] = useState<string>('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
 
   const loadClaimDocuments = async () => {
     try {
@@ -112,6 +120,55 @@ export const ClaimsSummary: React.FC = () => {
   const handleRefresh = () => {
     setRefreshing(true);
     loadClaimDocuments();
+  };
+
+  // Function to handle document viewing
+  const handleViewDocument = async (claim: ClaimDocument) => {
+    try {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      setPreviewDocument(claim);
+      setShowPreviewModal(true);
+      
+      const response = await apiService.getDocumentContent(claim.id);
+      setDocumentContent(response.content);
+      
+    } catch (error) {
+      console.error('Failed to load document content:', error);
+      setPreviewError(error instanceof Error ? error.message : 'Failed to load document');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Function to close the preview modal
+  const handleClosePreview = () => {
+    setShowPreviewModal(false);
+    setPreviewDocument(null);
+    setDocumentContent('');
+    setPreviewError(null);
+  };
+
+  // Function to handle document downloading
+  const handleDownloadDocument = async (claim: ClaimDocument) => {
+    try {
+      const response = await apiService.getDocumentContent(claim.id);
+      
+      // Create a blob and download the document
+      const blob = new Blob([response.content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = claim.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+    } catch (error) {
+      console.error('Failed to download document:', error);
+      // You could show an error message to the user here
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -264,6 +321,13 @@ export const ClaimsSummary: React.FC = () => {
             </Alert>
           )}
 
+          {previewError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>Preview Error: {previewError}</AlertDescription>
+            </Alert>
+          )}
+
           {claimDocuments.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
@@ -299,15 +363,17 @@ export const ClaimsSummary: React.FC = () => {
                                            <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => {
-                          // TODO: Implement document preview functionality
-                          console.log('View document:', claim.id, claim.filename);
-                        }}
+                        onClick={() => handleViewDocument(claim)}
+                        disabled={previewLoading && previewDocument?.id === claim.id}
                       >
                        <Eye className="h-4 w-4 mr-1" />
-                       View
+                       {previewLoading && previewDocument?.id === claim.id ? 'Loading...' : 'View'}
                      </Button>
-                     <Button variant="outline" size="sm">
+                     <Button 
+                       variant="outline" 
+                       size="sm"
+                       onClick={() => handleDownloadDocument(claim)}
+                     >
                        <Download className="h-4 w-4 mr-1" />
                        Download
                      </Button>
@@ -318,6 +384,73 @@ export const ClaimsSummary: React.FC = () => {
           )}
                  </CardContent>
        </Card>
+
+       {/* Document Preview Modal */}
+       <Dialog open={showPreviewModal} onOpenChange={setShowPreviewModal}>
+         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+           <DialogHeader>
+             <DialogTitle className="flex items-center space-x-2">
+               <FileText className="h-5 w-5" />
+               <span>{previewDocument?.filename || 'Document Preview'}</span>
+             </DialogTitle>
+             <DialogDescription>
+               {previewDocument && (
+                 <div className="text-sm text-gray-600 space-y-1">
+                   <div>Type: {getClaimType(previewDocument.document_type)}</div>
+                   <div>Uploaded: {formatDate(previewDocument.upload_timestamp)}</div>
+                   <div>Size: {formatFileSize(previewDocument.file_size)}</div>
+                 </div>
+               )}
+             </DialogDescription>
+           </DialogHeader>
+           
+           <div className="flex-1 overflow-y-auto max-h-[60vh] p-4 border border-gray-200 rounded-md bg-gray-50">
+             {previewLoading ? (
+               <div className="flex items-center justify-center h-32">
+                 <RefreshCw className="h-6 w-6 animate-spin text-blue-500 mr-2" />
+                 <span>Loading document content...</span>
+               </div>
+             ) : previewError ? (
+               <div className="text-center py-8">
+                 <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                 <p className="text-red-600">{previewError}</p>
+                 <Button 
+                   variant="outline" 
+                   onClick={() => previewDocument && handleViewDocument(previewDocument)}
+                   className="mt-2"
+                 >
+                   Retry
+                 </Button>
+               </div>
+             ) : documentContent ? (
+               <div className="whitespace-pre-wrap text-sm font-mono">
+                 {documentContent}
+               </div>
+             ) : (
+               <div className="text-center py-8 text-gray-500">
+                 No content available
+               </div>
+             )}
+           </div>
+           
+           <div className="flex justify-between items-center pt-4">
+             <Button 
+               variant="outline"
+               onClick={() => previewDocument && handleDownloadDocument(previewDocument)}
+             >
+               <Download className="h-4 w-4 mr-2" />
+               Download
+             </Button>
+             <Button 
+               variant="outline"
+               onClick={handleClosePreview}
+             >
+               <X className="h-4 w-4 mr-2" />
+               Close
+             </Button>
+           </div>
+         </DialogContent>
+       </Dialog>
 
        
      </div>
