@@ -78,7 +78,7 @@ This repository implements a dual-domain AI platform serving both banking and in
 │                              AZURE AI SERVICES                                  │
 ├─────────────────────────┬─────────────────────┬─────────────────────────────────┤
 │    Azure OpenAI         │   Azure AI Search   │   Document Intelligence         │
-│  • GPT-4o for Analysis │  • Vector Store      │  • PDF/Image Processing        │
+│  • GPT-5 for Analysis │  • Vector Store      │  • PDF/Image Processing        │
 │  • Embeddings Models   │  • Semantic Search   │  • Form Recognition             │
 │  • Function Calling    │  • Hybrid Search     │  • Layout Analysis              │
 └─────────────────────────┴─────────────────────┴─────────────────────────────────┘
