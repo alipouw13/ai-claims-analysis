@@ -411,6 +411,15 @@ class AzureServiceManager:
             if hasattr(self, 'storage_manager') and self.storage_manager:
                 if hasattr(self.storage_manager, 'cleanup'):
                     await self.storage_manager.cleanup()
+            
+            # Close MCP service clients
+            try:
+                from app.services.mcp_client import mcp_service
+                if mcp_service:
+                    await mcp_service.close_all_clients()
+                    logger.info("MCP service clients closed")
+            except Exception as mcp_error:
+                logger.warning(f"Error closing MCP clients: {mcp_error}")
                     
             logger.info("Azure services cleaned up")
         except Exception as e:
