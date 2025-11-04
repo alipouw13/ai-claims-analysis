@@ -183,7 +183,139 @@ class CitationReadyDocumentProcessor:
         if 'page_number' not in enhanced:
             enhanced['page_number'] = self._extract_page_number(chunk.content)
         
+        # Enhanced content extraction for policy and claim documents
+        enhanced = self._extract_enhanced_metadata_from_content(enhanced, chunk.content)
+        
         return enhanced
+    
+    def _extract_enhanced_metadata_from_content(self, metadata: Dict[str, Any], content: str) -> Dict[str, Any]:
+        """Extract comprehensive metadata from chunk content using the same logic as chunk visualization."""
+        import re
+        
+        # Only enhance if we don't already have good values
+        if not metadata.get('policy_number') or metadata.get('policy_number') in ['Schedule', 'icyholder', None]:
+            # Extract policy number from content - improved patterns
+            policy_patterns = [
+                r'Policy.*?([A-Z]{2}\d{7})',  # PH3456789 format
+                r'Policy.*?([A-Z]{1,4}\d{6,9})',  # General format
+                r'([A-Z]{2}\d{7})',  # Direct PH3456789 match
+                r'([A-Z]{1,4}\d{6,9})'  # Any alphanumeric policy format
+            ]
+            for pattern in policy_patterns:
+                policy_match = re.search(pattern, content)
+                if policy_match:
+                    metadata['policy_number'] = policy_match.group(1)
+                    break
+        
+        if not metadata.get('insurance_company') or metadata.get('insurance_company') in ['Car', None]:
+            # Extract insurance company from content
+            lines = content.split('\n')
+            for line in lines:
+                line_clean = line.strip()
+                if any(keyword in line.lower() for keyword in ['insurance', 'inc.', 'company', 'corp']):
+                    if ('policyholder' not in line.lower() and 
+                        'policy' not in line.lower() and 
+                        len(line_clean) > 5 and  # Must be substantial
+                        not line_clean.startswith('-')):  # Not a bullet point
+                        metadata['insurance_company'] = line_clean
+                        break
+        
+        if not metadata.get('claim_number'):
+            # Extract claim number
+            claim_patterns = [
+                r'Claim Number[:\s]+([A-Z]+\d+)',
+                r'CLM(\d+)',
+                r'Claim[:\s#]+([A-Z]*\d+)',
+                r'Claim ID[:\s]+([A-Z]+\d+)'
+            ]
+            for pattern in claim_patterns:
+                claim_match = re.search(pattern, content, re.IGNORECASE)
+                if claim_match:
+                    metadata['claim_number'] = claim_match.group(1)
+                    break
+        
+        # Extract telephone number
+        if not metadata.get('telephone_number'):
+            phone_patterns = [
+                r'Telephone Number[:\s]+(\d{3}-\d{3}-\d{4})',
+                r'Phone[:\s]+(\d{3}-\d{3}-\d{4})',
+                r'Tel[:\s]+(\d{3}-\d{3}-\d{4})',
+                r'(\d{3}-\d{3}-\d{4})'
+            ]
+            for pattern in phone_patterns:
+                phone_match = re.search(pattern, content)
+                if phone_match:
+                    metadata['telephone_number'] = phone_match.group(1)
+                    break
+        
+        # Extract dates
+        if not metadata.get('effective_date'):
+            date_patterns = [
+                r'Policy Effective Date[:\s]+(\d{4}-\d{2}-\d{2})',
+                r'Effective Date[:\s]+(\d{4}-\d{2}-\d{2})',
+                r'Effective[:\s]+(\d{4}-\d{2}-\d{2})'
+            ]
+            for pattern in date_patterns:
+                date_match = re.search(pattern, content, re.IGNORECASE)
+                if date_match:
+                    metadata['effective_date'] = date_match.group(1)
+                    break
+        
+        if not metadata.get('date_of_loss'):
+            loss_patterns = [
+                r'Date of (?:Damage|Loss)[/:\s]+(\d{4}-\d{2}-\d{2})',
+                r'Loss Date[:\s]+(\d{4}-\d{2}-\d{2})',
+                r'Date of Loss[:\s]+(\d{4}-\d{2}-\d{2})'
+            ]
+            for pattern in loss_patterns:
+                date_match = re.search(pattern, content, re.IGNORECASE)
+                if date_match:
+                    metadata['date_of_loss'] = date_match.group(1)
+                    break
+        
+        # Extract insured name
+        if not metadata.get('insured_name'):
+            lines = content.split('\n')
+            for line in lines:
+                line_clean = line.strip()
+                patterns = ["Policyholder:", "Insured Name:", "Policyholder First Name", "Policyholder Last Name"]
+                for pattern in patterns:
+                    if pattern in line:
+                        try:
+                            extracted = line.split(pattern)[-1].strip()
+                            if extracted and len(extracted) > 1:
+                                metadata['insured_name'] = extracted
+                                break
+                        except:
+                            pass
+                if metadata.get('insured_name'):
+                    break
+        
+        # Extract coverage limits
+        coverage_limits = {}
+        lines = content.split('\n')
+        for line in lines:
+            line_clean = line.strip()
+            if ':' in line_clean and '$' in line_clean:
+                try:
+                    coverage_part, amount_part = line_clean.split(':', 1)
+                    coverage_part = coverage_part.strip('- ')
+                    amount_part = amount_part.strip()
+                    
+                    if '$' in amount_part:
+                        # Extract the dollar amount
+                        amount_match = re.search(r'\$([0-9,]+)', amount_part)
+                        if amount_match:
+                            amount = amount_match.group(1)
+                            coverage_limits[coverage_part] = f"${amount}"
+                except:
+                    pass
+        
+        if coverage_limits:
+            metadata['coverage_limits'] = "; ".join([f"{k}: {v}" for k, v in coverage_limits.items()])
+            metadata['coverage_types'] = list(coverage_limits.keys())
+        
+        return metadata
     
     def _extract_section_from_content(self, content: str) -> str:
         """Extract section name from chunk content."""

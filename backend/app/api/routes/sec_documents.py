@@ -649,41 +649,53 @@ async def get_document_chunks(
     try:
         logger.info(f"Getting chunks for document: {document_id}")
         
-        # Get all chunks for this document using robust direct search first
+        # Optimized search approach: use direct search with proper filtering
         client = sec_service.azure_manager.search_client
+        
+        # First, try simple search with essential fields only for better performance
         try:
             search_results = await client.search(
                 search_text="*",
                 select=[
                     "content", "document_id", "source", "chunk_id",
                     "company", "filing_date", "form_type", "processed_at",
-                    "ticker", "cik", "industry", "document_url", "section_type",
-                    "accession_number", "page_number", "credibility_score", "chunk_index"
+                    "ticker", "cik", "section_type", "accession_number", 
+                    "page_number", "credibility_score", "chunk_index"
                 ],
                 filter=f"document_id eq '{document_id}'",
-                top=1000,
+                top=500,  # Reduced from 1000 for better performance
                 query_type="simple"
             )
+            
+            # Convert async iterator to list efficiently
+            results = []
+            async for r in search_results:
+                results.append(dict(r))
+                
         except Exception as sel_err:
-            logger.warning(f"SEC chunks select failed, retrying without select: {sel_err}")
+            logger.warning(f"SEC chunks optimized search failed, retrying with basic method: {sel_err}")
+            # Fallback to basic search
             search_results = await client.search(
                 search_text="*",
                 filter=f"document_id eq '{document_id}'",
-                top=1000,
+                top=500,
                 query_type="simple"
             )
-        results = [dict(r) for r in [r async for r in search_results]]
+            results = [dict(r) async for r in search_results]
         
-        # If direct search returns nothing, fallback to hybrid
         if not results:
+            logger.warning(f"No chunks found with direct search for document {document_id}, trying hybrid search")
+            # Last resort: hybrid search but with reduced scope
             results = await sec_service.azure_manager.hybrid_search(
                 query="*",
                 filters=f"document_id eq '{document_id}'",
-                top_k=1000
+                top_k=500
             )
         
         if not results:
             raise HTTPException(status_code=404, detail="Document not found")
+        
+        logger.info(f"Found {len(results)} chunks for document {document_id}")
         
         # Get document info from first chunk
         doc_info = {

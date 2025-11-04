@@ -874,8 +874,8 @@ class AzureServiceManager:
             logger.info(f"list_unique_documents: index_name={index_name}, policy_ix={policy_ix}, claims_ix={claims_ix}, is_vector_schema={is_vector_schema}")
 
             if is_vector_schema:
-                # For policy/claims indexes, include timestamp fields for upload date
-                select_fields = ["id", "parent_id", "title", "source", "content", "processed_at", "upload_timestamp", "created_at"]
+                # For policy/claims indexes, use only fields that exist in the schema
+                select_fields = ["id", "parent_id", "title", "source", "content", "processed_at"]
             else:
                 # For SEC/generic indexes, use the legacy field names
                 select_fields = ["id", "document_id", "source", "processed_at", "file_size", "title"]
@@ -952,8 +952,8 @@ class AzureServiceManager:
                     if file_size > docs_by_id[doc_id]["size"]:
                         docs_by_id[doc_id]["size"] = file_size
                 else:
-                    # For vector schema, look for upload timestamp fields
-                    upload_date = rd.get("upload_timestamp") or rd.get("processed_at") or rd.get("created_at")
+                    # For vector schema, look for timestamp fields that exist
+                    upload_date = rd.get("processed_at")
                     if upload_date and (not docs_by_id[doc_id]["uploadDate"] or upload_date < docs_by_id[doc_id]["uploadDate"]):
                         docs_by_id[doc_id]["uploadDate"] = upload_date
                     

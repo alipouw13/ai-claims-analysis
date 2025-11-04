@@ -567,12 +567,13 @@ async def get_document(document_id: str):
         logger.error(f"Error getting document {document_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve document")
 
-@router.get("/documents/{document_id}/chunks")
-async def get_document_chunks(
+@router.get("/documents/{document_id}/chunks-simple")
+async def get_document_chunks_simple(
     document_id: str, 
     index: str = "policy",
     azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
+    """Simple chunks endpoint for basic chunk data without full visualization response"""
     try:
         # Check if Azure services are configured
         if not (settings.AZURE_SEARCH_SERVICE_NAME and 
@@ -600,12 +601,22 @@ async def get_document_chunks(
         return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "error", "error_message": str(e)}
 
 @router.get("/documents/{document_id}/chunk-visualization")
+async def get_policy_claims_chunk_visualization_legacy(
+    document_id: str, 
+    index: str = "policy",
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
+):
+    """Legacy endpoint - redirects to the new chunks endpoint for compatibility"""
+    return await get_policy_claims_chunk_visualization(document_id, index, azure_manager)
+
+@router.get("/documents/{document_id}/chunks", response_model=ChunkVisualizationResponse)
 async def get_policy_claims_chunk_visualization(
     document_id: str, 
     index: str = "policy",
     azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
-    """Return enhanced SEC-style chunk visualization payload for policy/claims documents.
+    """Get chunking visualization for a specific policy/claims document.
+    Uses the same response format as SEC documents for consistent frontend integration.
     Provides comprehensive document analysis including detailed statistics,
     section breakdown, and rich metadata similar to SEC document visualization.
     
@@ -651,26 +662,9 @@ async def get_policy_claims_chunk_visualization(
             search_results = await client.search(
                 search_text="*",
                 select=[
-                    # Core fields
+                    # Core fields that exist in the schema
                     "chunk_id", "parent_id", "content", "title", "section_type", 
-                    "page_number", "citation_info", "processed_at", "source",
-                    
-                    # Policy metadata fields
-                    "policy_number", "coverage_limits", "deductible", "insured_name",
-                    "effective_date", "expiration_date", "line_of_business", "state",
-                    "insurance_company", "agent_name", "premium_amount", "property_address",
-                    "vehicle_info", "coverage_types", "exclusions", "endorsements",
-                    
-                    # Claim metadata fields  
-                    "claim_id", "claim_number", "date_of_loss", "reported_date", "loss_cause",
-                    "location", "coverage_decision", "settlement_summary", "payout_amount",
-                    "adjuster_name", "claim_status", "adjuster_notes", "property_damage",
-                    "injury_details",
-                    
-                    # Processing metadata
-                    "chunk_method", "smart_processing", "quality_score", "optimal_size",
-                    "word_count", "content_complexity", "contains_monetary_values",
-                    "filename", "keywords"
+                    "page_number", "citation_info", "processed_at", "source"
                 ],
                 filter=f"parent_id eq '{document_id}'",
                 top=2000,
@@ -730,19 +724,30 @@ async def get_policy_claims_chunk_visualization(
             total_content_length += content_length
             chunk_lengths.append(content_length)
             
+            # Parse citation_info JSON for rich metadata
+            chunk_metadata = {}
+            citation_info = c.get("citation_info")
+            if citation_info and isinstance(citation_info, str):
+                try:
+                    import json
+                    chunk_metadata = json.loads(citation_info)
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.debug(f"Failed to parse chunk citation_info JSON: {e}")
+                    chunk_metadata = {}
+            
             # Collect page numbers for range analysis
-            page_num = c.get("page_number")
+            page_num = c.get("page_number") or chunk_metadata.get("page_number")
             if page_num and isinstance(page_num, (int, float)):
                 page_numbers.append(int(page_num))
             
             # Collect section types for distribution analysis
-            section_type = c.get("section_type") or ""
+            section_type = c.get("section_type") or chunk_metadata.get("section_type") or ""
             section_type = section_type.strip() if section_type else ""
             if section_type:
                 section_types.append(section_type)
             
             # Collect credibility scores
-            cred_score = c.get("credibility_score", 0)
+            cred_score = c.get("credibility_score") or chunk_metadata.get("confidence_score", 0)
             if isinstance(cred_score, (int, float)):
                 credibility_scores.append(float(cred_score))
             
@@ -754,54 +759,54 @@ async def get_policy_claims_chunk_visualization(
                 "page_number": page_num,
                 "section_type": section_type or "general",
                 "credibility_score": cred_score,
-                "citation_info": c.get("citation_info", {}),
+                "citation_info": chunk_metadata,  # Use parsed JSON instead of string
                 "search_score": c.get("@search.score", 0),
-                "chunk_index": c.get("chunk_index", i),
+                "chunk_index": c.get("chunk_index") or chunk_metadata.get("chunk_index", i),
                 
-                # Rich policy metadata
-                "policy_number": c.get("policy_number"),
-                "insured_name": c.get("insured_name"),
-                "insurance_company": c.get("insurance_company"),
-                "line_of_business": c.get("line_of_business"),
-                "state": c.get("state"),
-                "effective_date": c.get("effective_date"),
-                "expiration_date": c.get("expiration_date"),
-                "deductible": c.get("deductible"),
-                "coverage_limits": c.get("coverage_limits"),
-                "coverage_types": c.get("coverage_types"),
-                "exclusions": c.get("exclusions"),
-                "endorsements": c.get("endorsements"),
-                "agent_name": c.get("agent_name"),
-                "premium_amount": c.get("premium_amount"),
-                "property_address": c.get("property_address"),
-                "vehicle_info": c.get("vehicle_info"),
+                # Rich policy metadata (from parsed citation_info)
+                "policy_number": chunk_metadata.get("policy_number"),
+                "insured_name": chunk_metadata.get("insured_name"),
+                "insurance_company": chunk_metadata.get("insurance_company"),
+                "line_of_business": chunk_metadata.get("line_of_business"),
+                "state": chunk_metadata.get("state"),
+                "effective_date": chunk_metadata.get("effective_date"),
+                "expiration_date": chunk_metadata.get("expiration_date"),
+                "deductible": chunk_metadata.get("deductible"),
+                "coverage_limits": chunk_metadata.get("coverage_limits"),
+                "coverage_types": chunk_metadata.get("coverage_types"),
+                "exclusions": chunk_metadata.get("exclusions"),
+                "endorsements": chunk_metadata.get("endorsements"),
+                "agent_name": chunk_metadata.get("agent_name"),
+                "premium_amount": chunk_metadata.get("premium_amount"),
+                "property_address": chunk_metadata.get("property_address"),
+                "vehicle_info": chunk_metadata.get("vehicle_info"),
                 
-                # Rich claim metadata
-                "claim_id": c.get("claim_id"),
-                "claim_number": c.get("claim_number"),
-                "date_of_loss": c.get("date_of_loss"),
-                "reported_date": c.get("reported_date"),
-                "loss_cause": c.get("loss_cause"),
-                "location": c.get("location"),
-                "coverage_decision": c.get("coverage_decision"),
-                "settlement_summary": c.get("settlement_summary"),
-                "payout_amount": c.get("payout_amount"),
-                "adjuster_name": c.get("adjuster_name"),
-                "claim_status": c.get("claim_status"),
-                "adjuster_notes": c.get("adjuster_notes"),
-                "property_damage": c.get("property_damage"),
-                "injury_details": c.get("injury_details"),
+                # Rich claim metadata (from parsed citation_info)
+                "claim_id": chunk_metadata.get("claim_id"),
+                "claim_number": chunk_metadata.get("claim_number"),
+                "date_of_loss": chunk_metadata.get("date_of_loss"),
+                "reported_date": chunk_metadata.get("reported_date"),
+                "loss_cause": chunk_metadata.get("loss_cause"),
+                "location": chunk_metadata.get("location"),
+                "coverage_decision": chunk_metadata.get("coverage_decision"),
+                "settlement_summary": chunk_metadata.get("settlement_summary"),
+                "payout_amount": chunk_metadata.get("payout_amount"),
+                "adjuster_name": chunk_metadata.get("adjuster_name"),
+                "claim_status": chunk_metadata.get("claim_status"),
+                "adjuster_notes": chunk_metadata.get("adjuster_notes"),
+                "property_damage": chunk_metadata.get("property_damage"),
+                "injury_details": chunk_metadata.get("injury_details"),
                 
-                # Processing metadata
-                "chunk_method": c.get("chunk_method"),
-                "smart_processing": c.get("smart_processing"),
-                "quality_score": c.get("quality_score"),
-                "optimal_size": c.get("optimal_size"),
-                "word_count": c.get("word_count"),
-                "content_complexity": c.get("content_complexity"),
-                "contains_monetary_values": c.get("contains_monetary_values"),
-                "filename": c.get("filename"),
-                "keywords": c.get("keywords")
+                # Processing metadata (from parsed citation_info)
+                "chunk_method": chunk_metadata.get("chunk_method"),
+                "smart_processing": chunk_metadata.get("smart_processing"),
+                "quality_score": chunk_metadata.get("quality_score"),
+                "optimal_size": chunk_metadata.get("optimal_size"),
+                "word_count": chunk_metadata.get("word_count"),
+                "content_complexity": chunk_metadata.get("content_complexity"),
+                "contains_monetary_values": chunk_metadata.get("contains_amounts"),
+                "filename": chunk_metadata.get("source_file"),
+                "keywords": chunk_metadata.get("keywords")
             }
             chunks.append(chunk_data)
 
@@ -817,56 +822,323 @@ async def get_policy_claims_chunk_visualization(
         sorted_sections = sorted(section_distribution.items(), key=lambda x: x[1], reverse=True)
         
         # Enhanced document information with comprehensive policy/claim metadata
-        first_chunk = raw_chunks[0] if raw_chunks else {}
+        # Aggregate metadata from all chunks, prioritizing chunks with citation_info
+        all_citation_metadata = {}
+        best_chunk_for_content = None
+        
+        # Find the best chunk with the most complete citation_info
+        for chunk in raw_chunks:
+            citation_info = chunk.get("citation_info")
+            if citation_info and isinstance(citation_info, str):
+                try:
+                    import json
+                    chunk_citation = json.loads(citation_info)
+                    # Merge and prioritize non-null values
+                    for key, value in chunk_citation.items():
+                        if value is not None and value != "":
+                            all_citation_metadata[key] = value
+                    
+                    # Keep track of the chunk with the most useful content for parsing
+                    if not best_chunk_for_content or len(chunk.get("content", "")) > len(best_chunk_for_content.get("content", "")):
+                        best_chunk_for_content = chunk
+                        
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.warning(f"Failed to parse citation_info JSON: {e}")
+                    continue
+        
+        # Use the first chunk as fallback if no citation_info is found
+        if not best_chunk_for_content:
+            best_chunk_for_content = raw_chunks[0] if raw_chunks else {}
+        
+        # Extract actual policyholder name and other data from ALL chunk content
+        insured_name = ""
+        insurance_company = ""
+        policy_number = ""  # Start empty - prioritize content extraction over citation_info
+        coverage_limits = {}
+        deductible = ""
+        coverage_types = []
+        
+        # Additional claim-specific fields
+        claim_number = ""
+        telephone_number = ""
+        time_of_loss = ""
+        date_prepared = ""
+        property_address = ""
+        mailing_address = ""
+        date_of_loss = ""
+        policy_effective_date = ""
+        policy_expiration_date = ""
+        claim_amount = ""
+        
+        # Search through all chunks for policyholder and company information
+        for chunk in raw_chunks:
+            content = chunk.get("content", "")
+            if not content:
+                continue
+                
+            lines = content.split('\n')
+            
+            # Extract policyholder name - multiple formats
+            if not insured_name:
+                for line in lines:
+                    line_clean = line.strip()
+                    # Look for various formats
+                    patterns = ["Policyholder:", "Insured Name:", "Policyholder First Name", "Policyholder Last Name"]
+                    for pattern in patterns:
+                        if pattern in line:
+                            try:
+                                extracted = line.split(pattern)[-1].strip()
+                                if extracted and len(extracted) > 1:
+                                    insured_name = extracted
+                                    break
+                            except:
+                                pass
+                    if insured_name:
+                        break
+            
+            # Extract insurance company
+            if not insurance_company:
+                for line in lines:
+                    line_clean = line.strip()
+                    if any(keyword in line.lower() for keyword in ['insurance', 'inc.', 'company', 'corp']):
+                        if ('policyholder' not in line.lower() and 
+                            'policy' not in line.lower() and 
+                            len(line_clean) > 5 and  # Must be substantial
+                            not line_clean.startswith('-')):  # Not a bullet point
+                            insurance_company = line_clean
+                            break
+            
+            # Extract policy number from content - prioritize this over citation_info
+            if not policy_number:
+                import re
+                # Look for patterns like "PH3456789" or "Policy – PH3456789"
+                # More flexible pattern to catch various formats
+                policy_match = re.search(r'(?:Policy.*?)?([A-Z]{1,4}\d{6,9})', content)
+                if policy_match:
+                    policy_number = policy_match.group(1)
+            
+            # Extract claim number
+            if not claim_number:
+                claim_patterns = [
+                    r'Claim Number[:\s]+([A-Z]+\d+)',
+                    r'CLM(\d+)',
+                    r'Claim[:\s#]+([A-Z]*\d+)',
+                    r'Claim ID[:\s]+([A-Z]+\d+)'
+                ]
+                for pattern in claim_patterns:
+                    claim_match = re.search(pattern, content, re.IGNORECASE)
+                    if claim_match:
+                        claim_number = claim_match.group(1)
+                        break
+            
+            # Extract telephone number
+            if not telephone_number:
+                phone_patterns = [
+                    r'Telephone Number[:\s]+(\d{3}-\d{3}-\d{4})',
+                    r'Phone[:\s]+(\d{3}-\d{3}-\d{4})',
+                    r'Tel[:\s]+(\d{3}-\d{3}-\d{4})',
+                    r'(\d{3}-\d{3}-\d{4})'
+                ]
+                for pattern in phone_patterns:
+                    phone_match = re.search(pattern, content)
+                    if phone_match:
+                        telephone_number = phone_match.group(1)
+                        break
+            
+            # Extract dates
+            if not date_of_loss:
+                date_patterns = [
+                    r'Date of (?:Damage|Loss)[/:\s]+(\d{4}-\d{2}-\d{2})',
+                    r'Loss Date[:\s]+(\d{4}-\d{2}-\d{2})',
+                    r'Date of Loss[:\s]+(\d{4}-\d{2}-\d{2})'
+                ]
+                for pattern in date_patterns:
+                    date_match = re.search(pattern, content, re.IGNORECASE)
+                    if date_match:
+                        date_of_loss = date_match.group(1)
+                        break
+            
+            # Extract time of loss
+            if not time_of_loss:
+                time_patterns = [
+                    r'Time of Loss[:\s]+(\d{1,2}:\d{2})',
+                    r'Loss Time[:\s]+(\d{1,2}:\d{2})',
+                    r'Time[:\s]+(\d{1,2}:\d{2})'
+                ]
+                for pattern in time_patterns:
+                    time_match = re.search(pattern, content, re.IGNORECASE)
+                    if time_match:
+                        time_of_loss = time_match.group(1)
+                        break
+            
+            # Extract date prepared
+            if not date_prepared:
+                prepared_patterns = [
+                    r'Date Prepared[:\s]+(\d{4}-\d{2}-\d{2})',
+                    r'Prepared[:\s]+(\d{4}-\d{2}-\d{2})',
+                    r'Date Created[:\s]+(\d{4}-\d{2}-\d{2})'
+                ]
+                for pattern in prepared_patterns:
+                    prepared_match = re.search(pattern, content, re.IGNORECASE)
+                    if prepared_match:
+                        date_prepared = prepared_match.group(1)
+                        break
+            
+            # Extract policy dates
+            if not policy_effective_date:
+                effective_patterns = [
+                    r'Policy Effective Date[:\s]+(\d{4}-\d{2}-\d{2})',
+                    r'Effective Date[:\s]+(\d{4}-\d{2}-\d{2})',
+                    r'Effective[:\s]+(\d{4}-\d{2}-\d{2})'
+                ]
+                for pattern in effective_patterns:
+                    effective_match = re.search(pattern, content, re.IGNORECASE)
+                    if effective_match:
+                        policy_effective_date = effective_match.group(1)
+                        break
+            
+            if not policy_expiration_date:
+                expiration_patterns = [
+                    r'Policy Expiration Date[:\s]+(\d{4}-\d{2}-\d{2})',
+                    r'Expiration Date[:\s]+(\d{4}-\d{2}-\d{2})',
+                    r'Expires[:\s]+(\d{4}-\d{2}-\d{2})'
+                ]
+                for pattern in expiration_patterns:
+                    expiration_match = re.search(pattern, content, re.IGNORECASE)
+                    if expiration_match:
+                        policy_expiration_date = expiration_match.group(1)
+                        break
+            
+            # Extract addresses
+            if not property_address:
+                # Look for "Property Address" section
+                for i, line in enumerate(lines):
+                    if 'property address' in line.lower() and i + 1 < len(lines):
+                        # Get the next line which should contain the address
+                        addr_line = lines[i + 1].strip()
+                        if addr_line and len(addr_line) > 5:
+                            property_address = addr_line
+                            break
+            
+            if not mailing_address:
+                # Look for "Mailing Address" section
+                for i, line in enumerate(lines):
+                    if 'mailing address' in line.lower() and i + 1 < len(lines):
+                        # Get the next line which should contain the address
+                        addr_line = lines[i + 1].strip()
+                        if addr_line and len(addr_line) > 5:
+                            mailing_address = addr_line
+                            break
+            
+            # Extract claim amount
+            if not claim_amount:
+                claim_amount_patterns = [
+                    r'Claim Amount[:\s]+\$([0-9,]+)',
+                    r'Settlement[:\s]+\$([0-9,]+)',
+                    r'Payout[:\s]+\$([0-9,]+)',
+                    r'Amount[:\s]+\$([0-9,]+)'
+                ]
+                for pattern in claim_amount_patterns:
+                    amount_match = re.search(pattern, content, re.IGNORECASE)
+                    if amount_match:
+                        claim_amount = f"${amount_match.group(1)}"
+                        break
+            
+            # Extract coverage limits and types
+            for line in lines:
+                line_clean = line.strip()
+                if ':' in line_clean and '$' in line_clean:
+                    # Extract coverage amounts like "Dwelling Coverage (A): $500,000"
+                    try:
+                        coverage_part, amount_part = line_clean.split(':', 1)
+                        coverage_part = coverage_part.strip('- ')
+                        amount_part = amount_part.strip()
+                        
+                        if '$' in amount_part:
+                            # Extract the dollar amount
+                            amount_match = re.search(r'\$([0-9,]+)', amount_part)
+                            if amount_match:
+                                amount = amount_match.group(1)
+                                coverage_limits[coverage_part] = f"${amount}"
+                                
+                                # Also add to coverage types list
+                                if coverage_part not in coverage_types:
+                                    coverage_types.append(coverage_part)
+                    except:
+                        pass
+                
+                # Extract deductible information
+                if 'deductible' in line_clean.lower() and '$' in line_clean:
+                    deductible_match = re.search(r'\$([0-9,]+)', line_clean)
+                    if deductible_match and not deductible:
+                        deductible = f"${deductible_match.group(1)}"
+                    
+            # If we found all the key info, we can check if we're done
+            # (but continue to get all coverage types)
+            
+        # Only fall back to citation_info policy_number if we didn't find it in content
+        if not policy_number:
+            policy_number = all_citation_metadata.get("policy_number", "")
+        
+        # Convert coverage_limits dict to a readable string format
+        coverage_limits_str = ""
+        if coverage_limits:
+            coverage_limits_str = "; ".join([f"{k}: {v}" for k, v in coverage_limits.items()])
+        
         document_info = {
             "document_id": document_id,
-            "title": first_chunk.get("title") or first_chunk.get("source") or document_id,
+            "title": best_chunk_for_content.get("title") or best_chunk_for_content.get("source") or document_id,
             "index": index,
             "document_type": f"{index.title()} Document",
             
-            # Policy metadata
-            "policy_number": first_chunk.get("policy_number", ""),
-            "insured_name": first_chunk.get("insured_name", ""),
-            "insurance_company": first_chunk.get("insurance_company", ""),
-            "line_of_business": first_chunk.get("line_of_business", ""),
-            "state": first_chunk.get("state", ""),
-            "effective_date": first_chunk.get("effective_date", ""),
-            "expiration_date": first_chunk.get("expiration_date", ""),
-            "deductible": first_chunk.get("deductible", ""),
-            "coverage_limits": first_chunk.get("coverage_limits", ""),
-            "coverage_types": first_chunk.get("coverage_types", []),
-            "exclusions": first_chunk.get("exclusions", []),
-            "endorsements": first_chunk.get("endorsements", []),
-            "agent_name": first_chunk.get("agent_name", ""),
-            "premium_amount": first_chunk.get("premium_amount", ""),
-            "property_address": first_chunk.get("property_address", ""),
-            "vehicle_info": first_chunk.get("vehicle_info", ""),
+            # Policy metadata (from citation_info and content parsing)
+            "policy_number": policy_number,
+            "insured_name": insured_name,
+            "insurance_company": insurance_company,
+            "line_of_business": all_citation_metadata.get("line_of_business", ""),
+            "state": all_citation_metadata.get("state", ""),
+            "effective_date": policy_effective_date or all_citation_metadata.get("effective_date", ""),
+            "expiration_date": policy_expiration_date or all_citation_metadata.get("expiration_date", ""),
+            "deductible": deductible or all_citation_metadata.get("deductible", ""),
+            "coverage_limits": coverage_limits_str or all_citation_metadata.get("coverage_limits", ""),
+            "coverage_types": coverage_types or all_citation_metadata.get("coverage_types", []),
+            "exclusions": all_citation_metadata.get("exclusions", []),
+            "endorsements": all_citation_metadata.get("endorsements", []),
+            "agent_name": all_citation_metadata.get("agent_name", ""),
+            "premium_amount": all_citation_metadata.get("premium_amount", ""),
+            "property_address": property_address or all_citation_metadata.get("property_address", ""),
+            "mailing_address": mailing_address,
+            "vehicle_info": all_citation_metadata.get("vehicle_info", ""),
+            "telephone_number": telephone_number,
             
-            # Claim metadata
-            "claim_id": first_chunk.get("claim_id", ""),
-            "claim_number": first_chunk.get("claim_number", ""),
-            "date_of_loss": first_chunk.get("date_of_loss", ""),
-            "reported_date": first_chunk.get("reported_date", ""),
-            "loss_cause": first_chunk.get("loss_cause", ""),
-            "location": first_chunk.get("location", ""),
-            "coverage_decision": first_chunk.get("coverage_decision", ""),
-            "settlement_summary": first_chunk.get("settlement_summary", ""),
-            "payout_amount": first_chunk.get("payout_amount", ""),
-            "adjuster_name": first_chunk.get("adjuster_name", ""),
-            "claim_status": first_chunk.get("claim_status", ""),
-            "adjuster_notes": first_chunk.get("adjuster_notes", []),
-            "property_damage": first_chunk.get("property_damage", ""),
-            "injury_details": first_chunk.get("injury_details", ""),
+            # Claim metadata (from citation_info and content parsing)
+            "claim_id": all_citation_metadata.get("claim_id", ""),
+            "claim_number": claim_number or all_citation_metadata.get("claim_number", ""),
+            "claim_amount": claim_amount,
+            "date_of_loss": date_of_loss or all_citation_metadata.get("date_of_loss", ""),
+            "time_of_loss": time_of_loss,
+            "date_prepared": date_prepared,
+            "reported_date": all_citation_metadata.get("reported_date", ""),
+            "loss_cause": all_citation_metadata.get("loss_cause", ""),
+            "location": all_citation_metadata.get("location", ""),
+            "coverage_decision": all_citation_metadata.get("coverage_decision", ""),
+            "settlement_summary": all_citation_metadata.get("settlement_summary", ""),
+            "payout_amount": all_citation_metadata.get("payout_amount", ""),
+            "adjuster_name": all_citation_metadata.get("adjuster_name", ""),
+            "claim_status": all_citation_metadata.get("claim_status", ""),
+            "adjuster_notes": all_citation_metadata.get("adjuster_notes", []),
+            "property_damage": all_citation_metadata.get("property_damage", ""),
+            "injury_details": all_citation_metadata.get("injury_details", ""),
             
-            # Processing metadata
-            "filename": first_chunk.get("filename", ""),
-            "chunk_method": first_chunk.get("chunk_method", ""),
-            "smart_processing": first_chunk.get("smart_processing", False),
-            "content_complexity": first_chunk.get("content_complexity", ""),
-            "contains_monetary_values": first_chunk.get("contains_monetary_values", False),
-            "processed_at": first_chunk.get("processed_at", ""),
+            # Processing metadata (from citation_info)
+            "filename": all_citation_metadata.get("source_file", best_chunk_for_content.get("title", "")),
+            "chunk_method": all_citation_metadata.get("chunk_method", ""),
+            "smart_processing": all_citation_metadata.get("smart_processing", False),
+            "content_complexity": all_citation_metadata.get("content_complexity", ""),
+            "contains_monetary_values": all_citation_metadata.get("contains_amounts", False),
+            "processed_at": all_citation_metadata.get("processed_at", ""),
             "total_chunks": len(chunks),
-            "source": first_chunk.get("source", ""),
+            "source": best_chunk_for_content.get("source", ""),
         }
 
         # Comprehensive chunk statistics (matching SEC format)

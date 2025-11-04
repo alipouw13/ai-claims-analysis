@@ -207,26 +207,32 @@ const ChunkingVisualization: React.FC<ChunkingVisualizationProps> = ({ initialDo
       if (!selectedDocument) return;
       try {
         if (domain === 'insurance') {
-          // Use new SEC-style policy/claims chunk visualization endpoint
+          // Use SEC-style policy/claims chunk visualization endpoint
           const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
-          const res = await fetch(`${apiBaseUrl}/knowledge-base/documents/${selectedDocument}/chunk-visualization?index=${index}`);
+          const res = await fetch(`${apiBaseUrl}/knowledge-base/documents/${selectedDocument}/chunks?index=${index}`);
           const payload = await res.json();
+          
+          // Handle the new ChunkVisualizationResponse format (same as SEC)
           const chunks = payload.chunks || [];
+          const docInfo = payload.document_info || {};
+          const chunkStats = payload.chunk_stats || {};
 
-          // Build a richer structure from API
+          // Build a richer structure from API response
           const structure: DocumentStructure = {
             id: selectedDocument,
-            filename: payload.document_info?.title || selectedDocument,
-            totalPages: 0,
+            filename: docInfo.title || docInfo.source || selectedDocument,
+            totalPages: chunkStats.page_range?.max || 1,
             processingStatus: 'completed',
             processingProgress: 100,
             sections: [
               {
                 name: 'Document',
-                startPage: 1,
-                endPage: 1,
+                startPage: chunkStats.page_range?.min || 1,
+                endPage: chunkStats.page_range?.max || 1,
                 subsections: [{
-                  name: 'All Chunks', startPage: 1, endPage: 1,
+                  name: 'All Chunks', 
+                  startPage: chunkStats.page_range?.min || 1, 
+                  endPage: chunkStats.page_range?.max || 1,
                   chunks: chunks.slice(0, 200).map((c: any, idx: number) => ({
                     id: c.chunk_id || c.id || `chunk_${idx}`,
                     content: c.content || '',
@@ -238,7 +244,7 @@ const ChunkingVisualization: React.FC<ChunkingVisualizationProps> = ({ initialDo
                     size: c.content_length || (c.content || '').length,
                     overlap: 0,
                     confidence: c.credibility_score ?? 0.9,
-                    citations: []
+                    citations: c.citation_info ? [c.citation_info] : []
                   }))
                 }]
               }
@@ -246,9 +252,9 @@ const ChunkingVisualization: React.FC<ChunkingVisualizationProps> = ({ initialDo
           };
           setDocumentStructure(structure);
           setAnalytics({
-            total_chunks: payload.chunk_stats?.total_chunks ?? chunks.length,
-            avg_chunk_length: payload.chunk_stats?.avg_chunk_length ?? 0,
-            section_types: payload.chunk_stats?.section_types ?? [],
+            total_chunks: chunkStats.total_chunks ?? chunks.length,
+            avg_chunk_length: chunkStats.avg_chunk_length ?? 0,
+            section_types: chunkStats.section_types ?? [],
           });
         } else {
           // Banking: use SEC document chunks endpoint
