@@ -28,7 +28,7 @@ def get_azure_manager(request: Request) -> AzureServiceManager:
     return azure_manager
 
 @router.get("/stats", response_model=KnowledgeBaseStats)
-async def get_knowledge_base_stats(request: Request):
+async def get_knowledge_base_stats(azure_manager: AzureServiceManager = Depends(get_azure_manager)):
     """Get current knowledge base statistics"""
     try:
         observability.track_request("knowledge_base_stats")
@@ -47,7 +47,7 @@ async def get_knowledge_base_stats(request: Request):
             )
             return stats
         
-        azure_manager = getattr(request.app.state, 'azure_manager', None)
+        # Azure services are now injected via dependency injection for better performance
         if not azure_manager:
             # Return default stats if Azure services not available
             stats = KnowledgeBaseStats(
@@ -117,12 +117,12 @@ async def update_knowledge_base(request: KnowledgeBaseUpdateRequest):
 
 @router.get("/documents")
 async def list_documents(
-    request: Request,
     document_type: Optional[str] = None,
     status: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
-    index: Optional[str] = None
+    index: Optional[str] = None,
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """List documents in the knowledge base (policy/claims)."""
     try:
@@ -135,15 +135,10 @@ async def list_documents(
             logger.warning("Azure Search not configured, returning empty document list")
             return {"documents": [], "status": "azure_not_configured"}
 
-        try:
-            # Use shared Azure manager from app state to avoid creating new instances
-            azure_manager = getattr(request.app.state, 'azure_manager', None)
-            if not azure_manager:
-                logger.error("Azure services not initialized in app state")
-                return {"documents": [], "status": "azure_not_configured"}
-        except Exception as azure_init_error:
-            logger.warning(f"Failed to access Azure services: {azure_init_error}")
-            return {"documents": [], "status": "azure_initialization_failed"}
+        # Azure services are now injected via dependency injection for better performance
+        if not azure_manager:
+            logger.error("Azure services not initialized")
+            return {"documents": [], "status": "azure_not_configured"}
 
         # Resolve indexes to list from
         indexes = []
@@ -152,6 +147,10 @@ async def list_documents(
             indexes = [settings.AZURE_SEARCH_POLICY_INDEX_NAME]
         elif req_index == "claims" or req_index == "claim":
             indexes = [settings.AZURE_SEARCH_CLAIMS_INDEX_NAME]
+        elif req_index == "sec-docs" or req_index == "sec":
+            # For SEC documents, delegate to SEC document service or return empty
+            # Since this is the policy/claims knowledge base, return empty for SEC requests
+            return {"documents": [], "status": "sec_docs_not_supported_in_knowledge_base"}
         else:
             indexes = [settings.AZURE_SEARCH_POLICY_INDEX_NAME, settings.AZURE_SEARCH_CLAIMS_INDEX_NAME]
 
@@ -174,6 +173,13 @@ async def list_documents(
                     if "chunks" not in d:
                         d["chunks"] = None
                     d.setdefault("conflicts", None)
+                    
+                    # Ensure upload date is properly formatted and named consistently with SEC documents
+                    if "uploadDate" in d and d["uploadDate"]:
+                        d["processed_at"] = d["uploadDate"]  # Map to same field name as SEC docs
+                    elif "processed_at" not in d or not d.get("processed_at"):
+                        d["processed_at"] = ""  # Provide empty string as fallback
+                        
                 documents.extend(items)
             except Exception as e:
                 logger.warning(f"Skipping index '{ix}' due to error: {e}")
@@ -185,7 +191,7 @@ async def list_documents(
         return {"documents": [], "status": "error", "error_message": str(e)}
 
 @router.get("/recent-claims")
-async def get_recent_claims(request: Request, limit: int = 10):
+async def get_recent_claims(limit: int = 10, azure_manager: AzureServiceManager = Depends(get_azure_manager)):
     """Get recent claims for dashboard display"""
     try:
         observability.track_request("get_recent_claims")
@@ -197,15 +203,10 @@ async def get_recent_claims(request: Request, limit: int = 10):
             logger.warning("Azure Search not configured, returning empty claims list")
             return {"claims": [], "status": "azure_not_configured"}
 
-        try:
-            # Use shared Azure manager from app state to avoid creating new instances
-            azure_manager = getattr(request.app.state, 'azure_manager', None)
-            if not azure_manager:
-                logger.error("Azure services not initialized in app state")
-                return {"claims": [], "status": "azure_not_configured"}
-        except Exception as azure_init_error:
-            logger.warning(f"Failed to access Azure services: {azure_init_error}")
-            return {"claims": [], "status": "azure_initialization_failed"}
+        # Azure services are now injected via dependency injection for better performance
+        if not azure_manager:
+            logger.error("Azure services not initialized")
+            return {"claims": [], "status": "azure_not_configured"}
 
         # Get claims from the claims index
         claims_index = settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
@@ -264,7 +265,7 @@ async def get_recent_claims(request: Request, limit: int = 10):
         return {"claims": [], "status": "error", "error_message": str(e)}
 
 @router.get("/recent-policies")
-async def get_recent_policies(request: Request, limit: int = 10):
+async def get_recent_policies(limit: int = 10, azure_manager: AzureServiceManager = Depends(get_azure_manager)):
     """Get recent policies for dashboard display"""
     try:
         observability.track_request("get_recent_policies")
@@ -276,15 +277,10 @@ async def get_recent_policies(request: Request, limit: int = 10):
             logger.warning("Azure Search not configured, returning empty policies list")
             return {"policies": [], "status": "azure_not_configured"}
 
-        try:
-            # Use shared Azure manager from app state to avoid creating new instances
-            azure_manager = getattr(request.app.state, 'azure_manager', None)
-            if not azure_manager:
-                logger.error("Azure services not initialized in app state")
-                return {"policies": [], "status": "azure_not_configured"}
-        except Exception as azure_init_error:
-            logger.warning(f"Failed to access Azure services: {azure_init_error}")
-            return {"policies": [], "status": "azure_initialization_failed"}
+        # Azure services are now injected via dependency injection for better performance
+        if not azure_manager:
+            logger.error("Azure services not initialized")
+            return {"policies": [], "status": "azure_not_configured"}
 
         # Get policies from the policy index
         policy_index = settings.AZURE_SEARCH_POLICY_INDEX_NAME
@@ -572,7 +568,11 @@ async def get_document(document_id: str):
         raise HTTPException(status_code=500, detail="Failed to retrieve document")
 
 @router.get("/documents/{document_id}/chunks")
-async def get_document_chunks(request: Request, document_id: str, index: str = "policy"):
+async def get_document_chunks(
+    document_id: str, 
+    index: str = "policy",
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
+):
     try:
         # Check if Azure services are configured
         if not (settings.AZURE_SEARCH_SERVICE_NAME and 
@@ -581,15 +581,10 @@ async def get_document_chunks(request: Request, document_id: str, index: str = "
             logger.warning("Azure Search not configured, returning empty chunks")
             return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "azure_not_configured"}
 
-        try:
-            # Use shared Azure manager from app state to avoid creating new instances
-            azure_manager = getattr(request.app.state, 'azure_manager', None)
-            if not azure_manager:
-                logger.error("Azure services not initialized in app state")
-                return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "azure_not_configured"}
-        except Exception as azure_init_error:
-            logger.warning(f"Failed to access Azure services: {azure_init_error}")
-            return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "azure_initialization_failed"}
+        # Azure services are now injected via dependency injection for better performance
+        if not azure_manager:
+            logger.error("Azure services not initialized")
+            return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "azure_not_configured"}
 
         ix_name = settings.AZURE_SEARCH_POLICY_INDEX_NAME if index.lower() == "policy" else settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
         
@@ -605,7 +600,11 @@ async def get_document_chunks(request: Request, document_id: str, index: str = "
         return {"document_id": document_id, "index": index, "chunks": [], "total": 0, "status": "error", "error_message": str(e)}
 
 @router.get("/documents/{document_id}/chunk-visualization")
-async def get_policy_claims_chunk_visualization(request: Request, document_id: str, index: str = "policy"):
+async def get_policy_claims_chunk_visualization(
+    document_id: str, 
+    index: str = "policy",
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
+):
     """Return enhanced SEC-style chunk visualization payload for policy/claims documents.
     Provides comprehensive document analysis including detailed statistics,
     section breakdown, and rich metadata similar to SEC document visualization.
@@ -625,24 +624,14 @@ async def get_policy_claims_chunk_visualization(request: Request, document_id: s
                 "status": "azure_not_configured"
             }
 
-        try:
-            # Use shared Azure manager from app state to avoid creating new instances
-            azure_manager = getattr(request.app.state, 'azure_manager', None)
-            if not azure_manager:
-                logger.error("Azure services not initialized in app state")
-                return {
-                    "document_info": {"document_id": document_id, "title": document_id, "index": index},
-                    "chunks": [],
-                    "stats": {"total_chunks": 0, "avg_length": 0},
-                    "status": "azure_not_configured"
-                }
-        except Exception as azure_init_error:
-            logger.warning(f"Failed to access Azure services: {azure_init_error}")
+        # Azure services are now injected via dependency injection for better performance
+        if not azure_manager:
+            logger.error("Azure services not initialized")
             return {
                 "document_info": {"document_id": document_id, "title": document_id, "index": index},
                 "chunks": [],
                 "stats": {"total_chunks": 0, "avg_length": 0},
-                "status": "azure_initialization_failed"
+                "status": "azure_not_configured"
             }
 
         ix_name = settings.AZURE_SEARCH_POLICY_INDEX_NAME if index.lower() == "policy" else settings.AZURE_SEARCH_CLAIMS_INDEX_NAME
@@ -662,10 +651,26 @@ async def get_policy_claims_chunk_visualization(request: Request, document_id: s
             search_results = await client.search(
                 search_text="*",
                 select=[
+                    # Core fields
                     "chunk_id", "parent_id", "content", "title", "section_type", 
-                    "page_number", "citation_info", "processed_at", "source", 
+                    "page_number", "citation_info", "processed_at", "source",
+                    
+                    # Policy metadata fields
                     "policy_number", "coverage_limits", "deductible", "insured_name",
-                    "effective_date", "expiration_date", "line_of_business", "state"
+                    "effective_date", "expiration_date", "line_of_business", "state",
+                    "insurance_company", "agent_name", "premium_amount", "property_address",
+                    "vehicle_info", "coverage_types", "exclusions", "endorsements",
+                    
+                    # Claim metadata fields  
+                    "claim_id", "claim_number", "date_of_loss", "reported_date", "loss_cause",
+                    "location", "coverage_decision", "settlement_summary", "payout_amount",
+                    "adjuster_name", "claim_status", "adjuster_notes", "property_damage",
+                    "injury_details",
+                    
+                    # Processing metadata
+                    "chunk_method", "smart_processing", "quality_score", "optimal_size",
+                    "word_count", "content_complexity", "contains_monetary_values",
+                    "filename", "keywords"
                 ],
                 filter=f"parent_id eq '{document_id}'",
                 top=2000,
@@ -741,7 +746,7 @@ async def get_policy_claims_chunk_visualization(request: Request, document_id: s
             if isinstance(cred_score, (int, float)):
                 credibility_scores.append(float(cred_score))
             
-            # Enhanced chunk data with preview
+            # Enhanced chunk data with preview and rich metadata
             chunk_data = {
                 "chunk_id": c.get("chunk_id") or c.get("id") or f"chunk_{i}",
                 "content": content[:200] + "..." if len(content) > 200 else content,
@@ -751,7 +756,52 @@ async def get_policy_claims_chunk_visualization(request: Request, document_id: s
                 "credibility_score": cred_score,
                 "citation_info": c.get("citation_info", {}),
                 "search_score": c.get("@search.score", 0),
-                "chunk_index": c.get("chunk_index", i)
+                "chunk_index": c.get("chunk_index", i),
+                
+                # Rich policy metadata
+                "policy_number": c.get("policy_number"),
+                "insured_name": c.get("insured_name"),
+                "insurance_company": c.get("insurance_company"),
+                "line_of_business": c.get("line_of_business"),
+                "state": c.get("state"),
+                "effective_date": c.get("effective_date"),
+                "expiration_date": c.get("expiration_date"),
+                "deductible": c.get("deductible"),
+                "coverage_limits": c.get("coverage_limits"),
+                "coverage_types": c.get("coverage_types"),
+                "exclusions": c.get("exclusions"),
+                "endorsements": c.get("endorsements"),
+                "agent_name": c.get("agent_name"),
+                "premium_amount": c.get("premium_amount"),
+                "property_address": c.get("property_address"),
+                "vehicle_info": c.get("vehicle_info"),
+                
+                # Rich claim metadata
+                "claim_id": c.get("claim_id"),
+                "claim_number": c.get("claim_number"),
+                "date_of_loss": c.get("date_of_loss"),
+                "reported_date": c.get("reported_date"),
+                "loss_cause": c.get("loss_cause"),
+                "location": c.get("location"),
+                "coverage_decision": c.get("coverage_decision"),
+                "settlement_summary": c.get("settlement_summary"),
+                "payout_amount": c.get("payout_amount"),
+                "adjuster_name": c.get("adjuster_name"),
+                "claim_status": c.get("claim_status"),
+                "adjuster_notes": c.get("adjuster_notes"),
+                "property_damage": c.get("property_damage"),
+                "injury_details": c.get("injury_details"),
+                
+                # Processing metadata
+                "chunk_method": c.get("chunk_method"),
+                "smart_processing": c.get("smart_processing"),
+                "quality_score": c.get("quality_score"),
+                "optimal_size": c.get("optimal_size"),
+                "word_count": c.get("word_count"),
+                "content_complexity": c.get("content_complexity"),
+                "contains_monetary_values": c.get("contains_monetary_values"),
+                "filename": c.get("filename"),
+                "keywords": c.get("keywords")
             }
             chunks.append(chunk_data)
 
@@ -766,21 +816,54 @@ async def get_policy_claims_chunk_visualization(request: Request, document_id: s
         # Sort sections by frequency
         sorted_sections = sorted(section_distribution.items(), key=lambda x: x[1], reverse=True)
         
-        # Enhanced document information with policy-specific fields
+        # Enhanced document information with comprehensive policy/claim metadata
         first_chunk = raw_chunks[0] if raw_chunks else {}
         document_info = {
             "document_id": document_id,
             "title": first_chunk.get("title") or first_chunk.get("source") or document_id,
             "index": index,
             "document_type": f"{index.title()} Document",
+            
+            # Policy metadata
             "policy_number": first_chunk.get("policy_number", ""),
             "insured_name": first_chunk.get("insured_name", ""),
-            "coverage_limits": first_chunk.get("coverage_limits", ""),
-            "deductible": first_chunk.get("deductible", ""),
-            "effective_date": first_chunk.get("effective_date", ""),
-            "expiration_date": first_chunk.get("expiration_date", ""),
+            "insurance_company": first_chunk.get("insurance_company", ""),
             "line_of_business": first_chunk.get("line_of_business", ""),
             "state": first_chunk.get("state", ""),
+            "effective_date": first_chunk.get("effective_date", ""),
+            "expiration_date": first_chunk.get("expiration_date", ""),
+            "deductible": first_chunk.get("deductible", ""),
+            "coverage_limits": first_chunk.get("coverage_limits", ""),
+            "coverage_types": first_chunk.get("coverage_types", []),
+            "exclusions": first_chunk.get("exclusions", []),
+            "endorsements": first_chunk.get("endorsements", []),
+            "agent_name": first_chunk.get("agent_name", ""),
+            "premium_amount": first_chunk.get("premium_amount", ""),
+            "property_address": first_chunk.get("property_address", ""),
+            "vehicle_info": first_chunk.get("vehicle_info", ""),
+            
+            # Claim metadata
+            "claim_id": first_chunk.get("claim_id", ""),
+            "claim_number": first_chunk.get("claim_number", ""),
+            "date_of_loss": first_chunk.get("date_of_loss", ""),
+            "reported_date": first_chunk.get("reported_date", ""),
+            "loss_cause": first_chunk.get("loss_cause", ""),
+            "location": first_chunk.get("location", ""),
+            "coverage_decision": first_chunk.get("coverage_decision", ""),
+            "settlement_summary": first_chunk.get("settlement_summary", ""),
+            "payout_amount": first_chunk.get("payout_amount", ""),
+            "adjuster_name": first_chunk.get("adjuster_name", ""),
+            "claim_status": first_chunk.get("claim_status", ""),
+            "adjuster_notes": first_chunk.get("adjuster_notes", []),
+            "property_damage": first_chunk.get("property_damage", ""),
+            "injury_details": first_chunk.get("injury_details", ""),
+            
+            # Processing metadata
+            "filename": first_chunk.get("filename", ""),
+            "chunk_method": first_chunk.get("chunk_method", ""),
+            "smart_processing": first_chunk.get("smart_processing", False),
+            "content_complexity": first_chunk.get("content_complexity", ""),
+            "contains_monetary_values": first_chunk.get("contains_monetary_values", False),
             "processed_at": first_chunk.get("processed_at", ""),
             "total_chunks": len(chunks),
             "source": first_chunk.get("source", ""),
@@ -975,6 +1058,18 @@ async def get_knowledge_base_metrics(index: Optional[str] = None, azure_manager:
         elif req == "claims" or req == "claim":
             if settings.AZURE_SEARCH_CLAIMS_INDEX_NAME:
                 ix_list = [settings.AZURE_SEARCH_CLAIMS_INDEX_NAME]
+        elif req == "sec-docs" or req == "sec":
+            # For SEC documents, return empty metrics since this is policy/claims knowledge base
+            return {
+                "total_documents": 0,
+                "total_chunks": 0,
+                "active_conflicts": 0,
+                "processing_rate": 0,
+                "documents_by_type": {},
+                "processing_queue_size": 0,
+                "last_updated": datetime.utcnow().isoformat(),
+                "status": "sec_docs_not_supported_in_knowledge_base"
+            }
         else:
             for ix in [settings.AZURE_SEARCH_POLICY_INDEX_NAME, settings.AZURE_SEARCH_CLAIMS_INDEX_NAME]:
                 if ix:
@@ -1049,7 +1144,8 @@ async def search_knowledge_base(
     query: str,
     limit: int = 10,
     document_type: Optional[str] = None,
-    min_score: float = 0.0
+    min_score: float = 0.0,
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """Search the knowledge base"""
     try:
@@ -1057,7 +1153,7 @@ async def search_knowledge_base(
         
         logger.info(f"Knowledge base search: {query}")
         
-        azure_manager = getattr(request.app.state, 'azure_manager', None)
+        # Azure services are now injected via dependency injection for better performance
         if not azure_manager:
             raise HTTPException(status_code=500, detail="Azure services not initialized")
         

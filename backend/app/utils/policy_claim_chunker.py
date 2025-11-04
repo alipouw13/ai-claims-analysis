@@ -557,32 +557,38 @@ def _create_basic_claim_chunks(text: str, key_values: Dict[str, str]) -> List[Di
     return chunks
 
 
-def smart_chunk_policy_text(text: str) -> List[Dict[str, Any]]:
+def smart_chunk_policy_text(text: str, filename: str = "") -> List[Dict[str, Any]]:
     """
     Enhanced policy text chunking with intelligent section detection and balanced sizing.
     
     Args:
         text: Raw policy document text
+        filename: Source filename for metadata extraction
         
     Returns:
         List of chunk dictionaries with enhanced metadata
     """
-    logger.info(f"Starting smart policy chunking for {len(text)} characters")
+    logger.info(f"Starting smart policy chunking for {len(text)} characters from {filename}")
     
     if not text or len(text.strip()) < 10:
         logger.warning("Text too short for chunking")
         return []
     
     try:
+        # Extract rich metadata using insurance metadata extractor
+        from app.utils.insurance_metadata_extractor import InsuranceMetadataExtractor
+        extractor = InsuranceMetadataExtractor()
+        policy_metadata = extractor.extract_policy_metadata(text, filename)
+        
         # Use balanced chunker for optimal chunk sizes
         from app.utils.balanced_chunker import BalancedChunker
         
-        # Create balanced chunker with policy-optimized settings
+        # Create balanced chunker with policy-optimized settings for better granularity
         chunker = BalancedChunker(
-            target_chunk_size=900,  # Optimal for RAG retrieval
-            max_chunk_size=1400,    # Prevent overly large chunks
-            min_chunk_size=250,     # Ensure meaningful content
-            overlap_ratio=0.12      # Reasonable overlap for context
+            target_chunk_size=400,  # Smaller target for better section detection
+            max_chunk_size=600,     # Force splitting of larger sections
+            min_chunk_size=150,     # Allow smaller meaningful chunks
+            overlap_ratio=0.15      # Good overlap for context
         )
         
         # Create balanced chunks
@@ -590,6 +596,34 @@ def smart_chunk_policy_text(text: str) -> List[Dict[str, Any]]:
         
         if balanced_chunks and len(balanced_chunks) > 0:
             logger.info(f"Balanced policy chunking successful: {len(balanced_chunks)} chunks")
+            # Enhance chunks with extracted policy metadata
+            for chunk in balanced_chunks:
+                if isinstance(chunk, dict) and 'metadata' in chunk:
+                    # Merge policy metadata into chunk metadata
+                    chunk['metadata'].update({
+                        'policy_number': policy_metadata.policy_number,
+                        'insured_name': policy_metadata.insured_name,
+                        'insurance_company': policy_metadata.insurance_company,
+                        'line_of_business': policy_metadata.line_of_business,
+                        'state': policy_metadata.state,
+                        'effective_date': policy_metadata.effective_date,
+                        'expiration_date': policy_metadata.expiration_date,
+                        'deductible': policy_metadata.deductible,
+                        'coverage_limits': policy_metadata.coverage_limits,
+                        'coverage_types': policy_metadata.coverage_types,
+                        'exclusions': policy_metadata.exclusions,
+                        'endorsements': policy_metadata.endorsements,
+                        'agent_name': policy_metadata.agent_name,
+                        'premium_amount': policy_metadata.premium_amount,
+                        'property_address': policy_metadata.property_address,
+                        'vehicle_info': policy_metadata.vehicle_info,
+                        'filename': policy_metadata.filename,
+                        'section_type': policy_metadata.section_type,
+                        'content_complexity': policy_metadata.content_complexity,
+                        'contains_monetary_values': policy_metadata.contains_monetary_values,
+                        'chunk_method': 'balanced_policy_chunking',
+                        'smart_processing': True
+                    })
             return balanced_chunks
         
         # Fallback to enhanced chunking if balanced fails
@@ -630,23 +664,29 @@ def smart_chunk_policy_text(text: str) -> List[Dict[str, Any]]:
         }]
 
 
-def smart_chunk_claim_text(text: str) -> List[Dict[str, Any]]:
+def smart_chunk_claim_text(text: str, filename: str = "") -> List[Dict[str, Any]]:
     """
     Enhanced claim text chunking with intelligent section detection and balanced sizing.
     
     Args:
         text: Raw claim document text
+        filename: Source filename for metadata extraction
         
     Returns:
         List of chunk dictionaries with enhanced metadata
     """
-    logger.info(f"Starting smart claim chunking for {len(text)} characters")
+    logger.info(f"Starting smart claim chunking for {len(text)} characters from {filename}")
     
     if not text or len(text.strip()) < 10:
         logger.warning("Text too short for chunking")
         return []
     
     try:
+        # Extract rich metadata using insurance metadata extractor
+        from app.utils.insurance_metadata_extractor import InsuranceMetadataExtractor
+        extractor = InsuranceMetadataExtractor()
+        claim_metadata = extractor.extract_claim_metadata(text, filename)
+        
         # Use balanced chunker for optimal chunk sizes
         from app.utils.balanced_chunker import BalancedChunker
         
@@ -663,6 +703,34 @@ def smart_chunk_claim_text(text: str) -> List[Dict[str, Any]]:
         
         if balanced_chunks and len(balanced_chunks) > 0:
             logger.info(f"Balanced claim chunking successful: {len(balanced_chunks)} chunks")
+            # Enhance chunks with extracted claim metadata
+            for chunk in balanced_chunks:
+                if isinstance(chunk, dict) and 'metadata' in chunk:
+                    # Merge claim metadata into chunk metadata
+                    chunk['metadata'].update({
+                        'claim_id': claim_metadata.claim_id,
+                        'policy_number': claim_metadata.policy_number,
+                        'insured_name': claim_metadata.insured_name,
+                        'insurance_company': claim_metadata.insurance_company,
+                        'date_of_loss': claim_metadata.date_of_loss,
+                        'reported_date': claim_metadata.reported_date,
+                        'loss_cause': claim_metadata.loss_cause,
+                        'location': claim_metadata.location,
+                        'coverage_decision': claim_metadata.coverage_decision,
+                        'settlement_summary': claim_metadata.settlement_summary,
+                        'payout_amount': claim_metadata.payout_amount,
+                        'adjuster_name': claim_metadata.adjuster_name,
+                        'claim_status': claim_metadata.claim_status,
+                        'adjuster_notes': claim_metadata.adjuster_notes,
+                        'property_damage': claim_metadata.property_damage,
+                        'injury_details': claim_metadata.injury_details,
+                        'filename': claim_metadata.filename,
+                        'section_type': claim_metadata.section_type,
+                        'content_complexity': claim_metadata.content_complexity,
+                        'contains_monetary_values': claim_metadata.contains_monetary_values,
+                        'chunk_method': 'balanced_claim_chunking',
+                        'smart_processing': True
+                    })
             return balanced_chunks
         
         # Fallback to enhanced chunking if balanced fails

@@ -37,7 +37,7 @@ class AzureOpenAIDeploymentService:
     def __init__(self, settings: Settings = None):
         self.settings = settings or Settings()
         self.credential = None
-        self._session = None
+        self._session = None  # Don't create session here, create in __aenter__
         
         # Extract account name from endpoint
         self.account_name = self._extract_account_name(self.settings.AZURE_OPENAI_ENDPOINT)

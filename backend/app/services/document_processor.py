@@ -129,11 +129,117 @@ class DocumentProcessor:
                 domain = 'claim'
             text_for_chunking = extracted_content.get("content", "")
             
-            # Try enhanced chunking first
-            try:
-                from app.utils.policy_claim_chunker import smart_chunk_policy_text, smart_chunk_claim_text
-                
-                if domain == 'policy':
+            # For claims, use the new dual-extraction pipeline instead of basic regex chunking
+            if domain == 'claim':
+                logger.info("Using new dual-extraction pipeline for claims processing...")
+                try:
+                    from app.services.claims_dual_extraction import ClaimsDualExtractionPipeline
+                    
+                    # Initialize dual extraction pipeline
+                    dual_extractor = ClaimsDualExtractionPipeline(self.azure_manager)
+                    
+                    # Process claim document with dual extraction
+                    dual_result = await dual_extractor.process_claim_document(
+                        content=content,
+                        content_type=content_type,
+                        document_images=None,  # Could be enhanced to extract images from PDF
+                        metadata=metadata
+                    )
+                    
+                    # Use the final extraction result to enhance financial_info
+                    extracted_claim_data = dual_result.final_result.extracted_data
+                    logger.info(f"Dual extraction completed: method={dual_result.final_result.extraction_method}, confidence={dual_result.final_result.confidence_score:.3f}")
+                    logger.info(f"Extracted claim fields: {list(extracted_claim_data.keys())}")
+                    
+                    # Merge extracted claim data into financial_info for search indexing
+                    financial_info.update({
+                        "dual_extraction_result": dual_result.final_result.extraction_method,
+                        "extraction_confidence": dual_result.final_result.confidence_score,
+                        "extracted_claim_data": extracted_claim_data,
+                        "azure_ai_confidence": dual_result.confidence_comparison.get("azure_ai_confidence", 0.0),
+                        "gpt4o_confidence": dual_result.confidence_comparison.get("gpt4o_confidence", 0.0)
+                    })
+                    
+                    # Replace placeholder key-value pairs with actual extracted data
+                    if extracted_claim_data:
+                        logger.info("Replacing placeholder values with actual extracted claim data")
+                        # Map extracted data to the format expected by the chunking system
+                        key_value_pairs = {}
+                        
+                        # Map claim schema fields to key-value pairs
+                        field_mappings = {
+                            "claim_number": ["claim_number", "claim number"],
+                            "policy_number": ["policy_number", "policy number"],
+                            "insured_name": ["insured_name", "insured", "policyholder"],
+                            "loss_date": ["loss_date", "date of loss"],
+                            "loss_description": ["loss_description", "description"],
+                            "claim_amount_requested": ["claim_amount_requested", "amount"],
+                            "deductible": ["deductible"],
+                            "adjuster_name": ["adjuster_name", "adjuster"],
+                            "claim_status": ["claim_status", "status"]
+                        }
+                        
+                        for schema_field, key_variants in field_mappings.items():
+                            if schema_field in extracted_claim_data and extracted_claim_data[schema_field]:
+                                value = extracted_claim_data[schema_field]
+                                # Add to key_value_pairs under multiple key variants for backward compatibility
+                                for key_variant in key_variants:
+                                    key_value_pairs[key_variant] = str(value)
+                        
+                        # Update extracted_content with real data instead of placeholders
+                        extracted_content["key_value_pairs"] = key_value_pairs
+                        logger.info(f"Updated key-value pairs with {len(key_value_pairs)} real extracted values")
+                    
+                    # Now use enhanced chunking with the real extracted data
+                    from app.utils.policy_claim_chunker import smart_chunk_claim_text
+                    enhanced_chunks = smart_chunk_claim_text(text_for_chunking)
+                    
+                    if enhanced_chunks and len(enhanced_chunks) > 0:
+                        logger.info(f"Using enhanced claim chunking with real data: {len(enhanced_chunks)} chunks")
+                        for c in enhanced_chunks:
+                            confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
+                            chunk_meta = {
+                                **(metadata or {}), 
+                                **financial_info, 
+                                **c["metadata"], 
+                                "confidence_score": confidence,
+                                "has_real_claim_data": True,
+                                "extraction_method": dual_result.final_result.extraction_method
+                            }
+                            chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
+                    else:
+                        # Create chunks from extracted claim data directly
+                        logger.info("Creating chunks directly from extracted claim data")
+                        chunks = await self._create_claim_chunks_from_extracted_data(
+                            extracted_claim_data, text_for_chunking, document_id, 
+                            {**(metadata or {}), **financial_info}
+                        )
+                        
+                except Exception as e:
+                    logger.error(f"Dual extraction pipeline failed, falling back to original chunking: {e}")
+                    # Fallback to original claim chunking
+                    from app.utils.policy_claim_chunker import smart_chunk_claim_text, chunk_claim_text
+                    try:
+                        enhanced_chunks = smart_chunk_claim_text(text_for_chunking)
+                        if enhanced_chunks and len(enhanced_chunks) > 0:
+                            for c in enhanced_chunks:
+                                confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
+                                chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
+                                chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
+                        else:
+                            for c in chunk_claim_text(text_for_chunking):
+                                confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
+                                chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
+                                chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
+                    except Exception as e2:
+                        logger.error(f"Fallback chunking also failed: {e2}")
+                        chunks = await self._create_basic_chunks(text_for_chunking, document_id, {**(metadata or {}), **financial_info})
+            
+            else:
+                # For policies, use existing enhanced chunking
+                try:
+                    from app.utils.policy_claim_chunker import smart_chunk_policy_text, chunk_policy_text
+                    
                     enhanced_chunks = smart_chunk_policy_text(text_for_chunking)
                     if enhanced_chunks and len(enhanced_chunks) > 0:
                         logger.info(f"Using enhanced policy chunking: {len(enhanced_chunks)} chunks")
@@ -143,43 +249,26 @@ class DocumentProcessor:
                             chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
                     else:
                         # Fallback to original chunking
-                        logger.info("Enhanced chunking returned empty, falling back to original")
+                        logger.info("Enhanced policy chunking returned empty, falling back to original")
                         for c in chunk_policy_text(text_for_chunking):
                             confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
                             chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
                             chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
-                else:
-                    enhanced_chunks = smart_chunk_claim_text(text_for_chunking)
-                    if enhanced_chunks and len(enhanced_chunks) > 0:
-                        logger.info(f"Using enhanced claim chunking: {len(enhanced_chunks)} chunks")
-                        for c in enhanced_chunks:
-                            confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
-                            chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
-                            chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
-                    else:
-                        # Fallback to original chunking
-                        logger.info("Enhanced chunking returned empty, falling back to original")
-                        for c in chunk_claim_text(text_for_chunking):
-                            confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
-                            chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
-                            chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
                             
-            except Exception as e:
-                logger.warning(f"Enhanced chunking failed, using original: {e}")
-                # Original chunking logic as fallback
-                if domain == 'policy':
+                except Exception as e:
+                    logger.warning(f"Enhanced policy chunking failed, using original: {e}")
+                    # Original chunking logic as fallback
+                    from app.utils.policy_claim_chunker import chunk_policy_text
                     for c in chunk_policy_text(text_for_chunking):
                         confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
                         chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
                         chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
-                else:
-                    for c in chunk_claim_text(text_for_chunking):
-                        confidence = self._compute_chunk_confidence(c["content"], c.get("metadata", {}))
-                        chunk_meta = {**(metadata or {}), **financial_info, **c["metadata"], "confidence_score": confidence}
-                        chunks.append(DocumentChunk(chunk_id=c["chunk_id"], content=c["content"], metadata=chunk_meta))
             
+            # Final fallback if no chunks were created
             if not chunks:
+                logger.warning("No chunks created, using basic fallback")
                 chunks = await self._create_basic_chunks(text_for_chunking, document_id, {**(metadata or {}), **financial_info})
+                
             logger.info(f"Step 5 COMPLETE: Created {len(chunks)} {domain} chunks")
             
             logger.info(f"Step 6: Generating embeddings for chunks...")
@@ -267,7 +356,8 @@ class DocumentProcessor:
                     document_id=document_id,
                     source=source,
                     metadata={**(metadata or {}), **financial_info},
-                    document_type=document_type
+                    document_type=document_type,
+                    target_index=target_index_name
                 )
                 
                 logger.info(f"Created {len(search_documents)} citation-ready search documents")
@@ -1218,6 +1308,166 @@ class DocumentProcessor:
             logger.error(f"Error extracting financial metrics: {e}")
         
         return metrics[:100]  # Limit to first 100 metrics
+
+    async def _create_claim_chunks_from_extracted_data(
+        self, 
+        extracted_claim_data: Dict[str, Any], 
+        original_text: str, 
+        document_id: str, 
+        metadata: Dict[str, Any]
+    ) -> List[DocumentChunk]:
+        """
+        Create chunks directly from extracted claim data when chunking fails.
+        """
+        try:
+            chunks = []
+            chunk_index = 0
+            
+            # Create a summary chunk with key claim information
+            summary_parts = []
+            
+            if extracted_claim_data.get("claim_number"):
+                summary_parts.append(f"Claim Number: {extracted_claim_data['claim_number']}")
+            
+            if extracted_claim_data.get("policy_number"):
+                summary_parts.append(f"Policy Number: {extracted_claim_data['policy_number']}")
+            
+            if extracted_claim_data.get("insured_name"):
+                summary_parts.append(f"Insured: {extracted_claim_data['insured_name']}")
+            
+            if extracted_claim_data.get("loss_date"):
+                summary_parts.append(f"Date of Loss: {extracted_claim_data['loss_date']}")
+            
+            if extracted_claim_data.get("cause_of_loss"):
+                summary_parts.append(f"Cause of Loss: {extracted_claim_data['cause_of_loss']}")
+            
+            if extracted_claim_data.get("claim_amount_requested"):
+                summary_parts.append(f"Claim Amount: ${extracted_claim_data['claim_amount_requested']:,.2f}")
+            
+            if extracted_claim_data.get("loss_description"):
+                summary_parts.append(f"Description: {extracted_claim_data['loss_description']}")
+            
+            if summary_parts:
+                summary_content = "CLAIM SUMMARY\n\n" + "\n".join(summary_parts)
+                
+                chunks.append(DocumentChunk(
+                    chunk_id=f"{document_id}_extracted_summary",
+                    content=summary_content,
+                    metadata={
+                        **metadata,
+                        "chunk_index": chunk_index,
+                        "section_type": "claim_summary",
+                        "chunk_type": "extracted_data",
+                        "has_real_claim_data": True,
+                        "extracted_fields": list(extracted_claim_data.keys())
+                    }
+                ))
+                chunk_index += 1
+            
+            # Create individual chunks for detailed sections
+            if extracted_claim_data.get("loss_description"):
+                chunks.append(DocumentChunk(
+                    chunk_id=f"{document_id}_loss_description",
+                    content=f"LOSS DESCRIPTION\n\n{extracted_claim_data['loss_description']}",
+                    metadata={
+                        **metadata,
+                        "chunk_index": chunk_index,
+                        "section_type": "loss_description",
+                        "chunk_type": "extracted_data",
+                        "has_real_claim_data": True
+                    }
+                ))
+                chunk_index += 1
+            
+            if extracted_claim_data.get("investigation_notes"):
+                chunks.append(DocumentChunk(
+                    chunk_id=f"{document_id}_investigation_notes",
+                    content=f"INVESTIGATION NOTES\n\n{extracted_claim_data['investigation_notes']}",
+                    metadata={
+                        **metadata,
+                        "chunk_index": chunk_index,
+                        "section_type": "investigation",
+                        "chunk_type": "extracted_data",
+                        "has_real_claim_data": True
+                    }
+                ))
+                chunk_index += 1
+            
+            # If we have damaged items, create a chunk for them
+            if extracted_claim_data.get("damaged_items"):
+                items_text = "DAMAGED ITEMS\n\n"
+                for i, item in enumerate(extracted_claim_data["damaged_items"], 1):
+                    if isinstance(item, dict):
+                        items_text += f"{i}. {item.get('item_description', 'Unknown item')}\n"
+                        if item.get('damage_description'):
+                            items_text += f"   Damage: {item['damage_description']}\n"
+                        if item.get('estimated_repair_cost'):
+                            items_text += f"   Repair Cost: ${item['estimated_repair_cost']:,.2f}\n"
+                        items_text += "\n"
+                
+                chunks.append(DocumentChunk(
+                    chunk_id=f"{document_id}_damaged_items",
+                    content=items_text,
+                    metadata={
+                        **metadata,
+                        "chunk_index": chunk_index,
+                        "section_type": "damaged_items",
+                        "chunk_type": "extracted_data",
+                        "has_real_claim_data": True
+                    }
+                ))
+                chunk_index += 1
+            
+            # If we still don't have enough content, add a chunk with the original text
+            if len(chunks) == 0 or (len(chunks) == 1 and len(original_text) > 1000):
+                # Split original text into reasonable chunks
+                text_chunks = self._split_text_into_chunks(original_text, max_size=1200)
+                
+                for i, text_chunk in enumerate(text_chunks):
+                    chunks.append(DocumentChunk(
+                        chunk_id=f"{document_id}_text_chunk_{i}",
+                        content=text_chunk,
+                        metadata={
+                            **metadata,
+                            "chunk_index": chunk_index,
+                            "section_type": "original_text",
+                            "chunk_type": "text",
+                            "has_real_claim_data": True
+                        }
+                    ))
+                    chunk_index += 1
+            
+            logger.info(f"Created {len(chunks)} chunks from extracted claim data")
+            return chunks
+            
+        except Exception as e:
+            logger.error(f"Error creating chunks from extracted claim data: {e}")
+            # Fallback to basic chunks
+            return await self._create_basic_chunks(original_text, document_id, metadata)
+    
+    def _split_text_into_chunks(self, text: str, max_size: int = 1200) -> List[str]:
+        """
+        Split text into chunks of specified maximum size.
+        """
+        if len(text) <= max_size:
+            return [text]
+        
+        chunks = []
+        sentences = text.split('. ')
+        current_chunk = ""
+        
+        for sentence in sentences:
+            if len(current_chunk) + len(sentence) + 2 <= max_size:
+                current_chunk += sentence + ". "
+            else:
+                if current_chunk.strip():
+                    chunks.append(current_chunk.strip())
+                current_chunk = sentence + ". "
+        
+        if current_chunk.strip():
+            chunks.append(current_chunk.strip())
+        
+        return chunks
 
     async def _create_basic_chunks(self, content: str, document_id: str, metadata: Dict) -> List[DocumentChunk]:
         """

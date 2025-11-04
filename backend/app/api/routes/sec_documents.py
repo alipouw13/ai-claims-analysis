@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 import logging
@@ -19,6 +19,14 @@ from app.models.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+def get_azure_manager(request: Request) -> AzureServiceManager:
+    """Dependency to get the Azure manager from app state"""
+    azure_manager = getattr(request.app.state, 'azure_manager', None)
+    if not azure_manager:
+        logger.error("Azure manager not found in app state")
+        raise HTTPException(status_code=503, detail="Azure services not available")
+    return azure_manager
 
 router = APIRouter(prefix="/api/v1/sec", tags=["SEC Documents"])
 
@@ -42,15 +50,10 @@ class SpecificFilingRequest(BaseModel):
 # Global dictionary to track batch processing status
 batch_processing_status: Dict[str, BatchProcessingStatus] = {}
 
-async def get_sec_service() -> SECDocumentService:
-    """Dependency to get SEC document service"""
+async def get_sec_service(azure_manager: AzureServiceManager = Depends(get_azure_manager)) -> SECDocumentService:
+    """Dependency to get SEC document service with injected Azure manager"""
     try:
-        # Get Azure manager from app state (assumes it's initialized in main.py)
-        from fastapi import Request
-        # For now, create a new instance - in production, this should be injected
-        from app.core.config import settings
-        azure_manager = AzureServiceManager()
-        await azure_manager.initialize()
+        # Use injected Azure manager for better performance
         return SECDocumentService(azure_manager)
     except Exception as e:
         logger.error(f"Failed to initialize SEC service: {e}")

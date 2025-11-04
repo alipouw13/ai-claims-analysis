@@ -388,6 +388,10 @@ class AzureServiceManager:
         """Cleanup resources"""
         try:
             # Close all Azure clients that may have internal HTTP sessions
+            if hasattr(self, 'search_client') and self.search_client:
+                if hasattr(self.search_client, 'close'):
+                    await self.search_client.close()
+                    
             if hasattr(self, 'cosmos_client') and self.cosmos_client:
                 if hasattr(self.cosmos_client, 'close'):
                     self.cosmos_client.close()
@@ -870,8 +874,8 @@ class AzureServiceManager:
             logger.info(f"list_unique_documents: index_name={index_name}, policy_ix={policy_ix}, claims_ix={claims_ix}, is_vector_schema={is_vector_schema}")
 
             if is_vector_schema:
-                # For policy/claims indexes, use the simpler Content Processing schema fields
-                select_fields = ["id", "parent_id", "title", "source", "content"]
+                # For policy/claims indexes, include timestamp fields for upload date
+                select_fields = ["id", "parent_id", "title", "source", "content", "processed_at", "upload_timestamp", "created_at"]
             else:
                 # For SEC/generic indexes, use the legacy field names
                 select_fields = ["id", "document_id", "source", "processed_at", "file_size", "title"]
@@ -948,7 +952,11 @@ class AzureServiceManager:
                     if file_size > docs_by_id[doc_id]["size"]:
                         docs_by_id[doc_id]["size"] = file_size
                 else:
-                    # For vector schema, we don't have processed_at field in the index
+                    # For vector schema, look for upload timestamp fields
+                    upload_date = rd.get("upload_timestamp") or rd.get("processed_at") or rd.get("created_at")
+                    if upload_date and (not docs_by_id[doc_id]["uploadDate"] or upload_date < docs_by_id[doc_id]["uploadDate"]):
+                        docs_by_id[doc_id]["uploadDate"] = upload_date
+                    
                     # Accumulate file size from content length
                     content = rd.get("content", "")
                     if content:

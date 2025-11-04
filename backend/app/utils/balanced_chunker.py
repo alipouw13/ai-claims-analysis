@@ -121,13 +121,16 @@ class BalancedChunker:
     def _identify_policy_sections(self, text: str) -> Dict[str, str]:
         """Identify sections in insurance policy documents."""
         patterns = [
-            (r"(?:COVERAGE|INSURING AGREEMENT)[\s:]*", "coverage"),
-            (r"(?:EXCLUSIONS?|WHAT (?:WE|IS) (?:DON'T|NOT) COVER)[\s:]*", "exclusions"),
-            (r"(?:CONDITIONS?|POLICY CONDITIONS?)[\s:]*", "conditions"),
-            (r"(?:DEDUCTIBLES?|YOUR DEDUCTIBLE)[\s:]*", "deductible"),
-            (r"(?:DEFINITIONS?|DEFINED TERMS?)[\s:]*", "definitions"),
-            (r"(?:LIMITS?|COVERAGE LIMITS?)[\s:]*", "limits"),
-            (r"(?:PREMIUM|COST|PAYMENT)[\s:]*", "premium"),
+            (r"(?:COVERAGE|INSURING AGREEMENT).*", "coverage"),
+            (r"(?:EXCLUSIONS?|WHAT (?:WE|IS) (?:DON'T|NOT) COVER).*", "exclusions"),
+            (r"(?:CONDITIONS?|POLICY CONDITIONS?).*", "conditions"),
+            (r"(?:DEDUCTIBLES?|YOUR DEDUCTIBLE).*", "deductible"),
+            (r"(?:DEFINITIONS?|DEFINED TERMS?).*", "definitions"),
+            (r"(?:LIMITS?|COVERAGE LIMITS?).*", "limits"),
+            (r"(?:PREMIUM|COST|PAYMENT).*", "premium"),
+            # Add more flexible patterns for common policy sections
+            (r"^[A-Z\s]{10,}$", "header"),  # All caps headers
+            (r"^\d+\.\s*[A-Z].*", "numbered_section"),  # Numbered sections
         ]
         
         return self._extract_sections_by_patterns(text, patterns)

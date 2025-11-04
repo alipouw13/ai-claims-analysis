@@ -143,26 +143,45 @@ async def upload_documents(
                 logger.info(f"Content type: {content_type}")
                 
                 logger.info(f"Creating async task for document processing...")
-                # Determine target index based on domain and claim status
+                # Determine target index based on document content and claim status
                 logger.info(f"🔍 Determining target index...")
                 logger.info(f"   Domain: {domain}")
                 logger.info(f"   is_claim: {is_claim}")
                 logger.info(f"   metadata.get('is_claim'): {metadata.get('is_claim')}")
+                logger.info(f"   Filename: {file.filename}")
                 
-                if domain == "banking":
-                    target_index = settings.AZURE_SEARCH_INDEX_NAME  # SEC index for banking
-                    logger.info(f"   Selected SEC index: {target_index}")
-                elif metadata.get("is_claim"):
-                    target_index = settings.AZURE_SEARCH_CLAIMS_INDEX_NAME  # Claims index for customer claims
-                    logger.info(f"   Selected CLAIMS index: {target_index}")
+                # Smart routing: Insurance documents (policies/claims) go to insurance indexes
+                # regardless of domain UI setting, only pure banking docs go to SEC index
+                is_insurance_doc = (
+                    metadata.get("is_claim") or 
+                    is_claim or 
+                    'policy' in file.filename.lower() or 
+                    'claim' in file.filename.lower() or
+                    domain == "insurance"
+                )
+                
+                if is_insurance_doc:
+                    if metadata.get("is_claim") or is_claim or 'claim' in file.filename.lower():
+                        target_index = settings.AZURE_SEARCH_CLAIMS_INDEX_NAME  # Claims index
+                        logger.info(f"   Selected CLAIMS index: {target_index}")
+                    else:
+                        target_index = settings.AZURE_SEARCH_POLICY_INDEX_NAME  # Policy index
+                        logger.info(f"   Selected POLICY index: {target_index}")
                 else:
-                    target_index = settings.AZURE_SEARCH_POLICY_INDEX_NAME  # Policy index for insurance
-                    logger.info(f"   Selected POLICY index: {target_index}")
+                    # Only pure banking/SEC documents go to SEC index
+                    target_index = settings.AZURE_SEARCH_INDEX_NAME  # SEC index
+                    logger.info(f"   Selected SEC index: {target_index}")
                 
                 logger.info(f"✅ Final target_index: {target_index}")
 
-                # Initialize processing tracker
-                index_name = "sec" if domain == "banking" else ("claims" if metadata.get("is_claim") else "policy")
+                # Initialize processing tracker with correct index name
+                if target_index == settings.AZURE_SEARCH_CLAIMS_INDEX_NAME:
+                    index_name = "claims"
+                elif target_index == settings.AZURE_SEARCH_POLICY_INDEX_NAME:
+                    index_name = "policy"
+                else:
+                    index_name = "sec"
+                    
                 kb_processing_status[document_id] = {
                     "document_id": document_id,
                     "filename": file.filename,
@@ -416,8 +435,14 @@ async def get_document_content(document_id: str, section: Optional[str] = None):
         if not all_chunks:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        # Sort chunks by chunk_id to maintain document order
-        all_chunks.sort(key=lambda x: x.get('chunk_id', ''))
+        # Sort chunks by chunk_id to maintain document order, handling None values safely
+        def safe_chunk_sort_key(chunk):
+            chunk_id = chunk.get('chunk_id')
+            if chunk_id is None:
+                return ''  # Use empty string for None values
+            return str(chunk_id)  # Convert to string for consistent sorting
+            
+        all_chunks.sort(key=safe_chunk_sort_key)
         
         # Combine all chunk content
         full_content = "\n\n".join([chunk.get('content', '') for chunk in all_chunks if chunk.get('content')])

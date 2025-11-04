@@ -260,15 +260,12 @@ async def get_foundry_models(azure_manager: AzureServiceManager = Depends(get_az
         raise HTTPException(status_code=500, detail="Failed to retrieve foundry models")
 
 @router.get("/foundry/connections")
-async def get_foundry_connections():
+async def get_foundry_connections(azure_service: AzureServiceManager = Depends(get_azure_manager)):
     """Get project connections from Azure AI Foundry"""
     try:
         observability.track_request("foundry_connections")
         
-        from app.services.azure_services import AzureServiceManager
-        azure_service = AzureServiceManager()
-        await azure_service.initialize()
-        
+        # Azure service is now injected via dependency injection for better performance
         connections = await azure_service.get_project_connections()
         return {
             "connections": connections,
@@ -280,15 +277,12 @@ async def get_foundry_connections():
         raise HTTPException(status_code=500, detail="Failed to retrieve foundry connections")
 
 @router.get("/foundry/project-info")
-async def get_foundry_project_info():
+async def get_foundry_project_info(azure_service: AzureServiceManager = Depends(get_azure_manager)):
     """Get Azure AI Foundry project information"""
     try:
         observability.track_request("foundry_project_info")
         
-        from app.services.azure_services import AzureServiceManager
-        azure_service = AzureServiceManager()
-        await azure_service.initialize()
-        
+        # Azure service is now injected via dependency injection for better performance
         project_info = await azure_service.get_project_info()
         return project_info
     except Exception as e:
@@ -299,14 +293,15 @@ async def get_foundry_project_info():
 async def get_token_usage_analytics(
     days: int = Query(7, ge=1, le=90),
     service_type: Optional[str] = Query(None),
-    deployment_name: Optional[str] = Query(None)
+    deployment_name: Optional[str] = Query(None),
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """Get token usage analytics for the specified time period"""
     try:
         observability.track_request("admin_token_analytics")
         
-        # Initialize token tracker
-        token_tracker = TokenUsageTracker()
+        # Initialize token tracker with injected Azure manager for better performance
+        token_tracker = TokenUsageTracker(azure_manager=azure_manager)
         await token_tracker.initialize()
         
         # Get analytics data
@@ -332,14 +327,15 @@ async def get_token_usage_analytics(
 
 @router.get("/token-usage/summary")
 async def get_token_usage_summary(
-    hours: int = Query(24, ge=1, le=168)
+    hours: int = Query(24, ge=1, le=168),
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """Get token usage summary for the specified time period"""
     try:
         observability.track_request("admin_token_summary")
         
-        # Initialize token tracker
-        token_tracker = TokenUsageTracker()
+        # Initialize token tracker with injected Azure manager for better performance
+        token_tracker = TokenUsageTracker(azure_manager=azure_manager)
         await token_tracker.initialize()
         
         # Get summary data
@@ -358,14 +354,15 @@ async def get_token_usage_summary(
 @router.get("/token-usage/trends")
 async def get_token_usage_trends(
     days: int = Query(30, ge=7, le=90),
-    granularity: str = Query("daily", regex="^(hourly|daily|weekly)$")
+    granularity: str = Query("daily", regex="^(hourly|daily|weekly)$"),
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """Get token usage trends over time"""
     try:
         observability.track_request("admin_token_trends")
         
-        # Initialize token tracker  
-        token_tracker = TokenUsageTracker()
+        # Initialize token tracker with injected Azure manager for better performance  
+        token_tracker = TokenUsageTracker(azure_manager=azure_manager)
         await token_tracker.initialize()
         
         # Get trends data
@@ -388,14 +385,15 @@ async def get_token_usage_trends(
 @router.get("/token-usage/costs")
 async def get_token_usage_costs(
     days: int = Query(30, ge=1, le=90),
-    service_type: Optional[str] = Query(None)
+    service_type: Optional[str] = Query(None),
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """Get token usage cost analytics"""
     try:
         observability.track_request("admin_token_costs")
         
-        # Initialize token tracker
-        token_tracker = TokenUsageTracker()
+        # Initialize token tracker with injected Azure manager for better performance
+        token_tracker = TokenUsageTracker(azure_manager=azure_manager)
         await token_tracker.initialize()
         
         # Get cost analytics
@@ -417,14 +415,15 @@ async def get_token_usage_costs(
 
 @router.get("/token-usage/deployments")
 async def get_deployment_usage(
-    days: int = Query(7, ge=1, le=90)
+    days: int = Query(7, ge=1, le=90),
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """Get token usage breakdown by deployment"""
     try:
         observability.track_request("admin_deployment_usage")
         
-        # Initialize token tracker
-        token_tracker = TokenUsageTracker()
+        # Initialize token tracker with injected Azure manager for better performance
+        token_tracker = TokenUsageTracker(azure_manager=azure_manager)
         await token_tracker.initialize()
         
         # Get deployment usage data
@@ -442,14 +441,15 @@ async def get_deployment_usage(
 
 @router.get("/token-usage/services")
 async def get_service_usage(
-    days: int = Query(7, ge=1, le=90)
+    days: int = Query(7, ge=1, le=90),
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """Get token usage breakdown by service type"""
     try:
         observability.track_request("admin_service_usage")
         
-        # Initialize token tracker
-        token_tracker = TokenUsageTracker()
+        # Initialize token tracker with injected Azure manager for better performance
+        token_tracker = TokenUsageTracker(azure_manager=azure_manager)
         await token_tracker.initialize()
         
         # Get service usage data
@@ -696,14 +696,15 @@ async def get_token_usage_requests(
     service_type: Optional[str] = Query(None),
     deployment_name: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    azure_manager: AzureServiceManager = Depends(get_azure_manager)
 ):
     """Get detailed token usage request logs"""
     try:
         observability.track_request("admin_token_requests")
         
-        # Initialize token tracker
-        token_tracker = TokenUsageTracker()
+        # Initialize token tracker with injected Azure manager for better performance
+        token_tracker = TokenUsageTracker(azure_manager=azure_manager)
         await token_tracker.initialize()
         
         # Get detailed request logs

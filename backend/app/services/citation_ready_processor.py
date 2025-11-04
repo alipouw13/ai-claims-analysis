@@ -28,7 +28,8 @@ class CitationReadyDocumentProcessor:
         document_id: str,
         source: str,
         metadata: Dict[str, Any],
-        document_type: str = "policy"
+        document_type: str = "policy",
+        target_index: str = None
     ) -> List[Dict[str, Any]]:
         """
         Prepare policy/claims chunks for search indexing with enhanced citation metadata.
@@ -62,68 +63,61 @@ class CitationReadyDocumentProcessor:
             # Calculate confidence score for the chunk
             confidence_score = self._calculate_citation_confidence(chunk, enhanced_metadata)
             
-            # Create citation-ready search document
-            search_doc = {
-                # Standard fields
-                "id": f"{document_id}_{chunk.chunk_id}",
-                "content": chunk.content,
-                "title": self._generate_chunk_title(enhanced_metadata, chunk),
-                "document_id": document_id,
-                "parent_id": document_id,
-                "source": source,
-                "content_vector": chunk.embedding,
-                
-                # Document type and classification
+            # Create citation-ready search document with only standard Azure Search fields
+            # Store extended metadata in the citation_info JSON field to avoid schema conflicts
+            extended_metadata = {
                 "document_type": document_type,
                 "section_type": enhanced_metadata.get('section_type', 'general'),
                 "content_type": enhanced_metadata.get('content_type', 'text'),
-                
-                # Citation-specific fields
-                "citation_info": json.dumps({
-                    "document_id": document_id,
-                    "source_file": source,
-                    "document_type": document_type,
-                    "section_name": enhanced_metadata.get('section_name', 'unknown'),
-                    "chunk_index": enhanced_metadata.get('chunk_index', 0),
-                    "page_number": enhanced_metadata.get('page_number', 0),
-                    "policy_number": enhanced_metadata.get('policy_number'),
-                    "claim_number": enhanced_metadata.get('claim_number'),
-                    "effective_date": enhanced_metadata.get('effective_date'),
-                    "processed_at": datetime.now().isoformat(),
-                    "confidence_score": confidence_score
-                }),
-                
-                # Insurance-specific fields for filtering and search
-                "policy_number": enhanced_metadata.get('policy_number', ''),
-                "claim_number": enhanced_metadata.get('claim_number', ''),
-                "coverage_type": enhanced_metadata.get('coverage_type', ''),
-                "insurance_company": enhanced_metadata.get('insurance_company', ''),
-                "effective_date": enhanced_metadata.get('effective_date', ''),
-                "expiration_date": enhanced_metadata.get('expiration_date', ''),
-                
-                # Content analysis fields
-                "chunk_id": chunk.chunk_id,
-                "chunk_index": enhanced_metadata.get('chunk_index', 0),
+                "policy_number": enhanced_metadata.get('policy_number'),
+                "claim_number": enhanced_metadata.get('claim_number'),
+                "coverage_type": enhanced_metadata.get('coverage_type'),
+                "insurance_company": enhanced_metadata.get('insurance_company'),
+                "effective_date": enhanced_metadata.get('effective_date'),
+                "expiration_date": enhanced_metadata.get('expiration_date'),
                 "chunk_method": enhanced_metadata.get('chunk_method', 'unknown'),
                 "confidence_score": confidence_score,
                 "word_count": len(chunk.content.split()),
                 "char_count": len(chunk.content),
-                
-                # Financial information
                 "contains_amounts": self._contains_financial_amounts(chunk.content),
                 "contains_dates": self._contains_dates(chunk.content),
                 "contains_coverage": self._contains_coverage_info(chunk.content),
-                
-                # Processing metadata
-                "processed_at": datetime.now().isoformat(),
                 "processing_method": "enhanced_citation_ready",
                 "smart_processing": enhanced_metadata.get('smart_processing', False),
-                
-                # Quality metrics
                 "quality_score": enhanced_metadata.get('quality_score', 0.0),
                 "optimal_size": enhanced_metadata.get('optimal_size', False),
                 "keywords": enhanced_metadata.get('keywords', [])
             }
+            
+            # Create search document with only standard fields that exist in Azure Search schema
+            search_doc = {
+                # Core Azure Search fields
+                "id": f"{document_id}_{chunk.chunk_id}",
+                "content": chunk.content,
+                "title": self._generate_chunk_title(enhanced_metadata, chunk),
+                "parent_id": document_id,
+                "source": source,
+                "content_vector": chunk.embedding
+            }
+            
+            # For now, avoid citation_info field for claims to prevent schema conflicts
+            # TODO: Investigate claims index schema and add proper metadata handling
+            if document_type == "policy" or (target_index and "policy" in target_index):
+                # Add citation info only for policy documents
+                search_doc["citation_info"] = json.dumps({
+                    "document_id": document_id,
+                    "source_file": source,
+                    "section_name": enhanced_metadata.get('section_name', 'unknown'),
+                    "chunk_index": enhanced_metadata.get('chunk_index', 0),
+                    "page_number": enhanced_metadata.get('page_number', 0),
+                    "processed_at": datetime.now().isoformat(),
+                    **extended_metadata  # Include all extended metadata in JSON
+                })
+            else:
+                # For claims documents, store essential metadata in title for now
+                logger.info(f"Skipping citation_info for {document_type} document to avoid schema conflicts")
+            
+            search_documents.append(search_doc)
             
             search_documents.append(search_doc)
         
