@@ -19,6 +19,59 @@ from app.core.config import settings
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+def _determine_section_type_from_content(content: str) -> str:
+    """Determine the section type based on content analysis."""
+    content_lower = content.lower()
+    
+    # Introduction/Header section
+    if any(keyword in content_lower for keyword in [
+        'policyholder:', 'policy number:', 'insurance policy', 
+        'property address:', 'policy term:', 'homeowners insurance policy'
+    ]):
+        return 'introduction'
+    
+    # Coverage details section
+    if any(keyword in content_lower for keyword in [
+        'covered perils:', 'property coverage:', 'coverage limits:',
+        'dwelling coverage', 'personal property', 'liability coverage'
+    ]):
+        return 'coverage'
+    
+    # Exclusions section
+    if any(keyword in content_lower for keyword in [
+        'exclusions:', 'not covered:', 'excluded perils:', 'limitations:'
+    ]):
+        return 'exclusions'
+    
+    # Conditions/Terms section
+    if any(keyword in content_lower for keyword in [
+        'conditions:', 'policy conditions:', 'terms and conditions:', 
+        'policy terms:', 'general conditions:'
+    ]):
+        return 'conditions'
+    
+    # Endorsements/Riders section
+    if any(keyword in content_lower for keyword in [
+        'endorsement:', 'rider:', 'amendment:', 'additional coverage:'
+    ]):
+        return 'endorsements'
+    
+    # Claims section
+    if any(keyword in content_lower for keyword in [
+        'claim number:', 'date of loss:', 'loss cause:', 'claim amount:',
+        'adjuster:', 'settlement:', 'claim status:'
+    ]):
+        return 'claims'
+    
+    # Deductible section
+    if any(keyword in content_lower for keyword in [
+        'deductible:', 'deductibles:', 'deductible amount:'
+    ]):
+        return 'deductible'
+    
+    # Default to general for unclassified content
+    return 'general'
+
 def get_azure_manager(request: Request) -> AzureServiceManager:
     """Dependency to get the Azure manager from app state"""
     azure_manager = getattr(request.app.state, 'azure_manager', None)
@@ -740,9 +793,14 @@ async def get_policy_claims_chunk_visualization(
             if page_num and isinstance(page_num, (int, float)):
                 page_numbers.append(int(page_num))
             
-            # Collect section types for distribution analysis
-            section_type = c.get("section_type") or chunk_metadata.get("section_type") or ""
-            section_type = section_type.strip() if section_type else ""
+            # Extract section type from chunk data
+            section_type = c.get("section_type") or chunk_metadata.get("section_type")
+            
+            # Apply improved section type detection on-the-fly
+            improved_section_type = _determine_section_type_from_content(content)
+            section_type = improved_section_type if improved_section_type != 'general' else (section_type or "general")
+            
+            # Collect section types for distribution analysis (using improved detection)
             if section_type:
                 section_types.append(section_type)
             
@@ -757,7 +815,7 @@ async def get_policy_claims_chunk_visualization(
                 "content": content[:200] + "..." if len(content) > 200 else content,
                 "content_length": content_length,
                 "page_number": page_num,
-                "section_type": section_type or "general",
+                "section_type": section_type,
                 "credibility_score": cred_score,
                 "citation_info": chunk_metadata,  # Use parsed JSON instead of string
                 "search_score": c.get("@search.score", 0),

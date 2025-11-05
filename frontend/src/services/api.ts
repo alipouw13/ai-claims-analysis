@@ -26,7 +26,7 @@ export interface DocumentInfo {
   filename: string;
   type: string;
   size: number;
-  uploadDate: string;
+  uploadDate: string | null;
   status: string;
   chunks?: number;
   conflicts?: number;

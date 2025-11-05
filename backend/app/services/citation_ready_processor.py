@@ -179,6 +179,9 @@ class CitationReadyDocumentProcessor:
         # Determine content type
         enhanced['content_type'] = self._determine_content_type(chunk.content)
         
+        # Determine section type based on content analysis
+        enhanced['section_type'] = self._determine_section_type(chunk.content)
+        
         # Extract page number if available
         if 'page_number' not in enhanced:
             enhanced['page_number'] = self._extract_page_number(chunk.content)
@@ -330,6 +333,59 @@ class CitationReadyDocumentProcessor:
                     return section.lower().replace(' ', '_')
         
         return 'content_section'
+    
+    def _determine_section_type(self, content: str) -> str:
+        """Determine the section type based on content analysis."""
+        content_lower = content.lower()
+        
+        # Introduction/Header section
+        if any(keyword in content_lower for keyword in [
+            'policyholder:', 'policy number:', 'insurance policy', 
+            'property address:', 'policy term:', 'homeowners insurance policy'
+        ]):
+            return 'introduction'
+        
+        # Coverage details section
+        if any(keyword in content_lower for keyword in [
+            'covered perils:', 'property coverage:', 'coverage limits:',
+            'dwelling coverage', 'personal property', 'liability coverage'
+        ]):
+            return 'coverage'
+        
+        # Exclusions section
+        if any(keyword in content_lower for keyword in [
+            'exclusions:', 'not covered:', 'excluded perils:', 'limitations:'
+        ]):
+            return 'exclusions'
+        
+        # Conditions/Terms section
+        if any(keyword in content_lower for keyword in [
+            'conditions:', 'policy conditions:', 'terms and conditions:', 
+            'policy terms:', 'general conditions:'
+        ]):
+            return 'conditions'
+        
+        # Endorsements/Riders section
+        if any(keyword in content_lower for keyword in [
+            'endorsement:', 'rider:', 'amendment:', 'additional coverage:'
+        ]):
+            return 'endorsements'
+        
+        # Claims section
+        if any(keyword in content_lower for keyword in [
+            'claim number:', 'date of loss:', 'loss cause:', 'claim amount:',
+            'adjuster:', 'settlement:', 'claim status:'
+        ]):
+            return 'claims'
+        
+        # Deductible section
+        if any(keyword in content_lower for keyword in [
+            'deductible:', 'deductibles:', 'deductible amount:'
+        ]):
+            return 'deductible'
+        
+        # Default to general for unclassified content
+        return 'general'
     
     def _determine_content_type(self, content: str) -> str:
         """Determine the type of content in the chunk."""

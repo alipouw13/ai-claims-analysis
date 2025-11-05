@@ -35,7 +35,8 @@ from app.core.config import settings
 from app.api.routes import knowledge_base, chat, admin, documents, qa, sec_documents, deployments, evaluation, workflows, agents, insurance_orchestration, batch
 from app.services.azure_services import AzureServiceManager
 from app.services.agents.azure_ai_agent_service import AzureAIAgentService
-from app.services.bootstrap_vectorization import bootstrap_policy_claims_vectorization
+# Disabled automatic bootstrap vectorization - only process documents when uploaded through UI
+# from app.services.bootstrap_vectorization import bootstrap_policy_claims_vectorization
 from app.core.observability import observability, setup_fastapi_instrumentation
 from app.core.tracing import setup_ai_foundry_tracing
 # Temporarily disable evaluation due to package conflicts
@@ -73,13 +74,14 @@ async def lifespan(app: FastAPI):
         logger.info("✅ AzureServiceManager stored in app.state")
         
         # Kick off best-effort bootstrap vectorization of sample policies/claims
-        try:
-            logger.info("🔧 Starting bootstrap vectorization task...")
-            asyncio.create_task(bootstrap_policy_claims_vectorization(azure_manager))
-            logger.info("✅ Bootstrap vectorization task scheduled")
-        except Exception as boot_err:
-            logger.warning(f"❌ Bootstrap vectorization task failed to schedule: {boot_err}")
-            logger.warning("This is not critical - the system will still work for uploads")
+        # DISABLED: Only process documents when explicitly uploaded through the UI
+        # try:
+        #     logger.info("🔧 Starting bootstrap vectorization task...")
+        #     asyncio.create_task(bootstrap_policy_claims_vectorization(azure_manager))
+        #     logger.info("✅ Bootstrap vectorization task scheduled")
+        # except Exception as boot_err:
+        #     logger.warning(f"❌ Bootstrap vectorization task failed to schedule: {boot_err}")
+        #     logger.warning("This is not critical - the system will still work for uploads")
         
         if hasattr(azure_manager, 'openai_client'):
             # Setup Azure AI Foundry evaluation framework

@@ -866,6 +866,7 @@ class AzureServiceManager:
         Groups by document_id; picks earliest chunk as representative.
         """
         try:
+            sample_logged = False  # Track if we've logged a sample document
             client = self.get_search_client_for_index(index_name)
             # Detect vector schema (policy/claims) vs generic/SEC
             policy_ix = getattr(settings, 'AZURE_SEARCH_POLICY_INDEX_NAME', None)
@@ -900,6 +901,11 @@ class AzureServiceManager:
             async for r in results:
                 result_count += 1
                 rd = dict(r)
+                
+                # Log first document to see available fields
+                if not sample_logged and result_count == 1:
+                    logger.info(f"Sample Azure Search document fields for index '{index_name}': {list(rd.keys())}")
+                    sample_logged = True
                 # Use parent_id for vector schema; fallback to document_id/id
                 if is_vector_schema:
                     doc_id = rd.get("parent_id") or rd.get("id")
@@ -954,8 +960,34 @@ class AzureServiceManager:
                 else:
                     # For vector schema, look for timestamp fields that exist
                     upload_date = rd.get("processed_at")
-                    if upload_date and (not docs_by_id[doc_id]["uploadDate"] or upload_date < docs_by_id[doc_id]["uploadDate"]):
-                        docs_by_id[doc_id]["uploadDate"] = upload_date
+                    
+                    # If no top-level processed_at, try to extract from citation_info JSON
+                    if not upload_date and rd.get("citation_info"):
+                        try:
+                            import json
+                            citation_data = json.loads(rd["citation_info"])
+                            upload_date = citation_data.get("processed_at")
+                            if upload_date:
+                                logger.debug(f"Extracted processed_at '{upload_date}' from citation_info for doc_id '{doc_id}'")
+                        except (json.JSONDecodeError, TypeError) as e:
+                            logger.debug(f"Failed to parse citation_info for doc_id '{doc_id}': {e}")
+                    
+                    # Try additional timestamp fields that might exist
+                    if not upload_date:
+                        # Look for other potential timestamp fields
+                        potential_fields = ["created_at", "indexed_at", "upload_time", "timestamp", "date_created"]
+                        for field in potential_fields:
+                            if rd.get(field):
+                                upload_date = rd.get(field)
+                                logger.debug(f"Found timestamp in field '{field}' for doc_id '{doc_id}': {upload_date}")
+                                break
+                    
+                    if upload_date:
+                        logger.debug(f"Found processed_at '{upload_date}' for doc_id '{doc_id}', current uploadDate: {docs_by_id[doc_id].get('uploadDate')}")
+                        if not docs_by_id[doc_id]["uploadDate"] or upload_date < docs_by_id[doc_id]["uploadDate"]:
+                            docs_by_id[doc_id]["uploadDate"] = upload_date
+                    else:
+                        logger.debug(f"No processed_at found for doc_id '{doc_id}' in chunk: {list(rd.keys())}")
                     
                     # Accumulate file size from content length
                     content = rd.get("content", "")
@@ -970,10 +1002,34 @@ class AzureServiceManager:
             for doc_id, doc_info in docs_by_id.items():
                 # Handle missing upload dates for vector schema documents
                 if is_vector_schema and not doc_info.get("uploadDate"):
-                    # Fallback to current timestamp only if no processed_at was found in any chunk
+                    # Use current timestamp for legacy documents without timestamps
                     from datetime import datetime
-                    doc_info["uploadDate"] = datetime.now().isoformat()
-                    logger.debug(f"Document {doc_id}: no processed_at found in any chunk, using fallback timestamp")
+                    current_timestamp = datetime.now().isoformat()
+                    doc_info["uploadDate"] = current_timestamp
+                    logger.info(f"Document {doc_id} ({doc_info.get('filename', 'unknown')}): no timestamp found, using current time: {current_timestamp}")
+                elif is_vector_schema:
+                    logger.debug(f"Document {doc_id} ({doc_info.get('filename', 'unknown')}): using timestamp {doc_info.get('uploadDate')}")
+                
+                # Handle missing upload dates for non-vector schema documents as well
+                if not is_vector_schema and not doc_info.get("uploadDate"):
+                    from datetime import datetime
+                    current_timestamp = datetime.now().isoformat()
+                    doc_info["uploadDate"] = current_timestamp
+                    logger.info(f"Document {doc_id} ({doc_info.get('filename', 'unknown')}): no timestamp found, using current time: {current_timestamp}")
+                
+                # Format upload dates to be just the date part (YYYY-MM-DD) for better frontend display
+                upload_date = doc_info.get("uploadDate")
+                if upload_date and upload_date != "unknown" and isinstance(upload_date, str):
+                    try:
+                        # Parse ISO datetime and extract just the date part
+                        from datetime import datetime
+                        if 'T' in upload_date:  # ISO format with time
+                            parsed_date = datetime.fromisoformat(upload_date.replace('Z', '+00:00'))
+                            doc_info["uploadDate"] = parsed_date.strftime('%Y-%m-%d')
+                            logger.debug(f"Formatted timestamp for {doc_id}: {upload_date} -> {doc_info['uploadDate']}")
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Could not parse timestamp '{upload_date}' for doc_id '{doc_id}': {e}")
+                        doc_info["uploadDate"] = None
                 
                 # Calculate estimated file size from content for vector schema documents
                 if is_vector_schema and doc_info.get("size", 0) == 0:

@@ -47,19 +47,29 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
   const statusCheckInterval = useRef<NodeJS.Timeout | null>(null);
   const errorRetryCount = useRef<number>(0);
 
+  // Add handler for back from chunk visualization
+  const handleBackFromVisualization = () => {
+    setPreviewDoc(null);
+    setActiveTab('documents');
+  };
+
   useEffect(() => {
-    loadData();
-  }, [indexFilter]);
+    // Only load data if domain is properly set to insurance
+    if (domain === 'insurance') {
+      loadData();
+    }
+  }, [indexFilter, domain]);
 
   // Live polling for status updates when viewing library or during upload
   useEffect(() => {
-    const shouldPoll = activeTab === 'documents' || isUploading;
+    const shouldPoll = activeTab === 'documents' && domain === 'insurance' && !isUploading;
     if (!shouldPoll) return;
+    
     const id = setInterval(() => {
       loadData({ silent: true });
     }, 3000);
     return () => clearInterval(id);
-  }, [activeTab, isUploading]);
+  }, [activeTab, isUploading, domain]);
 
   // Cleanup status check interval on unmount
   useEffect(() => {
@@ -75,8 +85,24 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
     setError(null);
     
     try {
+      // Only proceed if we're in insurance domain for policies/claims
+      if (domain !== 'insurance') {
+        console.log('🚫 Skipping loadData - not insurance domain:', { domain });
+        if (!opts.silent) setLoading(false);
+        return;
+      }
+      
       // Determine which index to use based on domain
       const targetIndex = domain === 'insurance' ? indexFilter : 'sec-docs';
+      
+      // Debug logging to track the issue
+      console.log('🔍 loadData called with:', { 
+        domain, 
+        indexFilter, 
+        targetIndex, 
+        silent: opts.silent,
+        timestamp: new Date().toISOString()
+      });
       
       const [documentsResponse, conflictsResponse, metricsResponse] = await Promise.all([
         apiService.listDocuments(targetIndex !== 'all' ? { index: targetIndex } as any : undefined as any),
@@ -359,14 +385,27 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString || dateString === 'null' || dateString === 'undefined') {
+      return 'N/A';
+    }
+    
+    try {
+      const date = new Date(dateString);
+      // Check if the date is valid
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+      }
+      
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      console.warn('Error formatting date:', dateString, error);
+      return 'Invalid Date';
+    }
   };
 
   return (
@@ -555,19 +594,34 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                 />
-                <select className="border rounded px-2 py-1 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <select 
+                  className="border rounded px-2 py-1 text-sm" 
+                  value={statusFilter} 
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  aria-label="Filter by document status"
+                >
                   <option value="all">All Statuses</option>
                   <option value="completed">Completed</option>
                   <option value="processing">Processing</option>
                   <option value="failed">Failed</option>
                 </select>
-                <select className="border rounded px-2 py-1 text-sm" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                <select 
+                  className="border rounded px-2 py-1 text-sm" 
+                  value={typeFilter} 
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  aria-label="Filter by document type"
+                >
                   <option value="all">All Types</option>
                   {[...new Set(documents.map(d => d.type))].map(t => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
-                <select className="border rounded px-2 py-1 text-sm" value={indexFilter} onChange={(e) => { setIndexFilter(e.target.value); loadData({ silent: true }); }}>
+                <select 
+                  className="border rounded px-2 py-1 text-sm" 
+                  value={indexFilter} 
+                  onChange={(e) => { setIndexFilter(e.target.value); loadData({ silent: true }); }}
+                  aria-label="Filter by document index"
+                >
                   <option value="all">All Indexes</option>
                   <option value="policy">Policy</option>
                   <option value="claims">Claims</option>
@@ -687,7 +741,22 @@ const KnowledgeBaseManager: React.FC<KnowledgeBaseManagerProps> = ({ modelSettin
         </TabsContent>
 
           <TabsContent value="chunking" className="space-y-4">
-            <ChunkingVisualization initialDocumentId={previewDoc?.id} index={(previewDoc?.index ?? indexFilter) as any} />
+          {previewDoc ? (
+            <ChunkingVisualization 
+              initialDocumentId={previewDoc.id} 
+              index={previewDoc.index}
+              onBack={handleBackFromVisualization}
+            />
+          ) : (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <div className="text-muted-foreground mb-4">No document selected</div>
+                <p className="text-sm text-muted-foreground">
+                  Select a document from the Document Library to view its chunk visualization
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="analytics" className="space-y-4">
