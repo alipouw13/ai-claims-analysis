@@ -26,6 +26,7 @@ from app.services.azure_services import AzureServiceManager
 from app.services.token_usage_tracker import TokenUsageTracker, ServiceType, OperationType
 from app.services.performance_tracker import performance_tracker
 from app.services.traditional_rag_service import TraditionalRAGService
+from app.services.policy_claims_rag_service import PolicyClaimsRAGService
 from app.services.agents.agentic_vector_rag_service import AgenticVectorRAGService
 from app.services.evaluation_service import evaluation_service
 from app.services.mcp_client import mcp_service
@@ -167,7 +168,8 @@ async def ask_question(
                     token_tracker=token_tracker,
                     tracking_id=tracking_id,
                     embedding_tracking_id=embedding_tracking_id,
-                    question_id=question_id
+                    question_id=question_id,
+                    domain=x_domain  # Pass domain to the function
                 )
             elif request.rag_method == "llamaindex":
                 # Placeholder for LlamaIndex implementation
@@ -181,7 +183,8 @@ async def ask_question(
                     token_tracker=token_tracker,
                     tracking_id=tracking_id,
                     embedding_tracking_id=embedding_tracking_id,
-                    question_id=question_id
+                    question_id=question_id,
+                    domain=x_domain
                 )
             elif request.rag_method == "agentic-vector":
                 # Process with Agentic Vector RAG implementation
@@ -193,17 +196,20 @@ async def ask_question(
                     token_tracker=token_tracker,
                     tracking_id=tracking_id,
                     embedding_tracking_id=embedding_tracking_id,
-                    question_id=question_id
+                    question_id=question_id,
+                    domain=x_domain
                 )
             elif request.rag_method == "mcp":
                 # Process with MCP (Model Context Protocol)
                 logger.info("Processing with MCP...")
                 qa_result = await process_with_mcp(
                     request=request,
+                    azure_manager=azure_manager,
                     session_id=session_id,
                     token_tracker=token_tracker,
                     tracking_id=tracking_id,
-                    question_id=question_id
+                    question_id=question_id,
+                    domain=x_domain
                 )
             else:  # default to "agent"
                 logger.info("Processing with Azure AI Agent Service...")
@@ -216,7 +222,8 @@ async def ask_question(
                     token_tracker=token_tracker,
                     tracking_id=tracking_id,
                     embedding_tracking_id=embedding_tracking_id,
-                    question_id=question_id
+                    question_id=question_id,
+                    domain=x_domain
                 )
             
             logger.info(f"QA result received: answer_length={len(qa_result.get('answer', ''))}, sources_count={len(qa_result.get('sources', []))}")
@@ -255,16 +262,28 @@ async def ask_question(
             if request.rag_method == "traditional":
                 # Traditional RAG returns citations directly
                 for citation_data in qa_result.get("citations", []):
+                    # Convert confidence to string if it's a float
+                    if "confidence" in citation_data and isinstance(citation_data["confidence"], (int, float)):
+                        citation_data = citation_data.copy()
+                        citation_data["confidence"] = str(citation_data["confidence"])
                     citations.append(Citation(**citation_data))
             elif request.rag_method == "agentic-vector":
                 # Agentic Vector RAG returns properly formatted citations directly
                 logger.info(f"🔍 DEBUG: Processing {len(qa_result.get('citations', []))} citations from agentic-vector RAG")
                 for citation_data in qa_result.get("citations", []):
+                    # Convert confidence to string if it's a float
+                    if "confidence" in citation_data and isinstance(citation_data["confidence"], (int, float)):
+                        citation_data = citation_data.copy()
+                        citation_data["confidence"] = str(citation_data["confidence"])
                     #logger.info(f"🔍 DEBUG: Citation data before processing: {citation_data}")
                     citations.append(Citation(**citation_data))
             else:
                 # Agent RAG returns sources that need to be converted to citations
                 for source in qa_result.get("sources", []):
+                    confidence_value = source.get("confidence", "medium")
+                    # Convert confidence to string if it's a float
+                    if isinstance(confidence_value, (int, float)):
+                        confidence_value = str(confidence_value)
                     citations.append(Citation(
                         id=source.get("id", str(uuid.uuid4())),
                         content=source.get("content", ""),
@@ -273,7 +292,7 @@ async def ask_question(
                         document_title=source.get("document_title", ""),
                         page_number=source.get("page_number"),
                         section_title=source.get("section_title"),
-                        confidence=source.get("confidence", "medium"),
+                        confidence=confidence_value,
                         url=source.get("url", ""),
                         credibility_score=source.get("credibility_score", 0.5)
                     ))
@@ -1324,7 +1343,7 @@ async def diagnostic_knowledge_base():
             "message": "Failed to run knowledge base diagnostic"
         }
 
-async def process_with_traditional_rag(
+async def process_with_policy_claims_rag(
     request: QARequest,
     azure_manager: AzureServiceManager,
     session_id: str,
@@ -1332,9 +1351,83 @@ async def process_with_traditional_rag(
     tracking_id: str,
     embedding_tracking_id: str,
     question_id: str
+) -> QAResponse:
+    """Process QA request using Policy/Claims RAG service for insurance domain."""
+    
+    try:
+        logger.info("Initializing Policy/Claims RAG service...")
+        rag_service = PolicyClaimsRAGService(azure_manager)
+        
+        logger.info("Processing question with Policy/Claims RAG...")
+        qa_result = await rag_service.ask_question(
+            question=request.question,
+            session_id=session_id,
+            request=request
+        )
+        
+        # Complete performance tracking
+        performance_tracker.complete_reasoning_chain(question_id)
+        
+        # Finalize token tracking
+        await token_tracker.finalize_tracking(tracking_id)
+        await token_tracker.finalize_tracking(embedding_tracking_id)
+        
+        logger.info("Policy/Claims RAG processing completed successfully")
+        return qa_result
+        
+    except Exception as e:
+        logger.error(f"Error in Policy/Claims RAG processing: {e}")
+        
+        # Finalize tracking on error
+        try:
+            await token_tracker.finalize_tracking(tracking_id)
+            await token_tracker.finalize_tracking(embedding_tracking_id)
+        except:
+            pass
+        
+        # Return error response
+        return QAResponse(
+            answer=f"I encountered an error while processing your question about policy or claims documents: {str(e)}",
+            citations=[],
+            session_id=session_id,
+            token_usage={
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
+            },
+            metadata={
+                "error": str(e),
+                "method": "policy_claims_rag"
+            }
+        )
+
+async def process_with_traditional_rag(
+    request: QARequest,
+    azure_manager: AzureServiceManager,
+    session_id: str,
+    token_tracker: TokenUsageTracker,
+    tracking_id: str,
+    embedding_tracking_id: str,
+    question_id: str,
+    domain: Optional[str] = None
 ) -> dict:
     """Process QA request using Traditional RAG approach"""
-    logger.info("Initializing Traditional RAG service...")
+    logger.info(f"Initializing Traditional RAG service for domain: {domain}...")
+    
+    # Use domain-specific service
+    if domain == "insurance":
+        logger.info("Using Policy/Claims RAG service for insurance domain")
+        return await process_with_policy_claims_rag(
+            request=request,
+            azure_manager=azure_manager,
+            session_id=session_id,
+            token_tracker=token_tracker,
+            tracking_id=tracking_id,
+            embedding_tracking_id=embedding_tracking_id,
+            question_id=question_id
+        )
+    else:
+        logger.info("Using Traditional RAG service for SEC/banking domain")
     
     # Add reasoning step for initialization
     step_num = performance_tracker.add_reasoning_step(
@@ -1408,13 +1501,49 @@ async def process_with_agent_rag(
     token_tracker: TokenUsageTracker,
     tracking_id: str,
     embedding_tracking_id: str,
-    question_id: str
+    question_id: str,
+    domain: Optional[str] = None
 ) -> dict:
     """Process QA request using Azure AI Agent Service with graceful fallback.
 
     If the Azure AI Agents API is unavailable or returns ResourceNotFound, we
     fall back to Traditional RAG to prevent a 500 and still return an answer.
     """
+    # Check if this is an insurance domain question that should use PolicyClaimsRAGService
+    if domain and domain.lower() == "insurance":
+        logger.info("Insurance domain detected, using PolicyClaimsRAGService for consistency")
+        # For insurance domain, fall back to PolicyClaimsRAGService to ensure proper routing
+        policy_claims_service = PolicyClaimsRAGService(azure_manager)
+        
+        try:
+            response = await policy_claims_service.ask_question(
+                question=request.question,
+                session_id=session_id,
+                request=request
+            )
+            # Convert QAResponse to the expected dictionary format
+            result = {
+                "answer": response.answer,
+                "sources": [{"id": c.id, "title": c.document_title, "url": c.url, "content": c.content} for c in response.citations],
+                "citations": [{"id": c.id, "title": c.document_title, "url": c.url, "content": c.content} for c in response.citations],
+                "confidence_score": response.confidence_score,
+                "session_id": response.session_id,
+                "question_id": response.question_id
+            }
+            return result
+        except Exception as e:
+            logger.error(f"Error in PolicyClaimsRAGService for insurance domain: {str(e)}")
+            # For insurance domain, do NOT fall back to SEC indexes
+            # Return an error response instead
+            return {
+                "answer": "I apologize, but I'm currently unable to process questions about insurance policies and claims. Please try again later or contact support if the issue persists.",
+                "sources": [],
+                "citations": [],
+                "confidence_score": 0.0,
+                "session_id": session_id,
+                "error": f"Insurance domain processing failed: {str(e)}"
+            }
+    
     try:
         logger.info("Getting Azure AI Agent Service...")
         azure_ai_agent_service = await orchestrator._get_azure_ai_agent_service()
@@ -1463,10 +1592,51 @@ async def process_with_agentic_vector_rag(
     token_tracker: TokenUsageTracker,
     tracking_id: str,
     embedding_tracking_id: str,
-    question_id: str
+    question_id: str,
+    domain: Optional[str] = None
 ) -> dict:
     """Process QA request using Agentic Vector RAG implementation"""
     logger.info("Initializing Agentic Vector RAG service...")
+    
+    # Check if this is an insurance domain question that should use PolicyClaimsRAGService
+    if domain and domain.lower() == "insurance":
+        logger.info("Insurance domain detected, using PolicyClaimsRAGService for consistency")
+        logger.info(f"Domain parameter received: {domain}")
+        logger.info("Will route to policy-documents and claims-documents indexes only")
+        
+        # For insurance domain, fall back to PolicyClaimsRAGService to ensure proper routing
+        policy_claims_service = PolicyClaimsRAGService(azure_manager)
+        
+        try:
+            response = await policy_claims_service.ask_question(
+                question=request.question,
+                session_id=session_id,
+                request=request
+            )
+            logger.info("PolicyClaimsRAGService processed question successfully")
+            # Convert QAResponse to the expected dictionary format
+            result = {
+                "answer": response.answer,
+                "sources": [{"id": c.id, "title": c.document_title, "url": c.url, "content": c.content} for c in response.citations],
+                "citations": [{"id": c.id, "title": c.document_title, "url": c.url, "content": c.content} for c in response.citations],
+                "confidence_score": response.confidence_score,
+                "session_id": response.session_id,
+                "question_id": response.question_id
+            }
+            return result
+        except Exception as e:
+            logger.error(f"Error in PolicyClaimsRAGService for insurance domain: {str(e)}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            # For insurance domain, do NOT fall back to SEC indexes
+            # Return an error response instead
+            return {
+                "answer": "I apologize, but I'm currently unable to process questions about insurance policies and claims. Please try again later or contact support if the issue persists.",
+                "sources": [],
+                "citations": [],
+                "confidence_score": 0.0,
+                "session_id": session_id,
+                "error": f"Insurance domain processing failed: {str(e)}"
+            }
     
     # Add reasoning step for initialization
     step_num = performance_tracker.add_reasoning_step(
@@ -1546,12 +1716,49 @@ async def process_with_agentic_vector_rag(
 
 async def process_with_mcp(
     request: QARequest,
+    azure_manager: AzureServiceManager,
     session_id: str,
     token_tracker: TokenUsageTracker,
     tracking_id: str,
-    question_id: str
+    question_id: str,
+    domain: Optional[str] = None
 ) -> dict:
     """Process question using MCP (Model Context Protocol)"""
+    # Check if this is an insurance domain question that should use PolicyClaimsRAGService
+    if domain and domain.lower() == "insurance":
+        logger.info("Insurance domain detected, using PolicyClaimsRAGService for consistency")
+        # For insurance domain, fall back to PolicyClaimsRAGService to ensure proper routing
+        policy_claims_service = PolicyClaimsRAGService(azure_manager)
+        
+        try:
+            response = await policy_claims_service.ask_question(
+                question=request.question,
+                session_id=session_id,
+                request=request
+            )
+            # Convert QAResponse to the expected dictionary format
+            result = {
+                "answer": response.answer,
+                "sources": [{"id": c.id, "title": c.document_title, "url": c.url, "content": c.content} for c in response.citations],
+                "citations": [{"id": c.id, "title": c.document_title, "url": c.url, "content": c.content} for c in response.citations],
+                "confidence_score": response.confidence_score,
+                "session_id": response.session_id,
+                "question_id": response.question_id
+            }
+            return result
+        except Exception as e:
+            logger.error(f"Error in PolicyClaimsRAGService for insurance domain: {str(e)}")
+            # For insurance domain, do NOT fall back to SEC indexes
+            # Return an error response instead
+            return {
+                "answer": "I apologize, but I'm currently unable to process questions about insurance policies and claims. Please try again later or contact support if the issue persists.",
+                "sources": [],
+                "citations": [],
+                "confidence_score": 0.0,
+                "session_id": session_id,
+                "error": f"Insurance domain processing failed: {str(e)}"
+            }
+    
     try:
         # Add reasoning step for MCP processing
         step_num = performance_tracker.add_reasoning_step(
