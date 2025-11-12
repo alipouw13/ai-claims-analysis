@@ -71,16 +71,22 @@ async def chat(
             from app.services.knowledge_base_manager import AdaptiveKnowledgeBaseManager
             kb_manager = AdaptiveKnowledgeBaseManager(azure_manager)
             
-            logger.info("Creating multi-agent orchestrator...")
-            # Use insurance orchestrator for insurance domain, financial for banking
+            logger.info("Getting cached multi-agent orchestrator...")
+            # Use cached orchestrators from app state for better performance
             if x_domain == "insurance":
-                from app.services.agents.multi_agent_insurance_orchestrator import SemanticKernelInsuranceOrchestrator
-                orchestrator = SemanticKernelInsuranceOrchestrator()
-                await orchestrator.initialize()
+                orchestrator = getattr(request.app.state, 'insurance_orchestrator', None)
+                if orchestrator is None:
+                    logger.warning("Insurance orchestrator not cached, creating new instance...")
+                    from app.services.agents.multi_agent_insurance_orchestrator import SemanticKernelInsuranceOrchestrator
+                    orchestrator = SemanticKernelInsuranceOrchestrator()
+                    await orchestrator.initialize()
                 logger.info("Using Insurance Orchestrator")
             else:
-                from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
-                orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
+                orchestrator = getattr(request.app.state, 'financial_orchestrator', None)
+                if orchestrator is None:
+                    logger.warning("Financial orchestrator not cached, creating new instance...")
+                    from app.services.agents.multi_agent_orchestrator import MultiAgentOrchestrator
+                    orchestrator = MultiAgentOrchestrator(azure_manager, kb_manager)
                 logger.info("Using Financial Orchestrator")
             
             logger.info("Getting Azure AI Agent Service...")
